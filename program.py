@@ -1,7 +1,26 @@
 from a2_utils import *
 from matplotlib import pyplot as plt
 import math
+import cv2
+from PIL import Image
 
+
+# function from UZ_utils.py:
+def imread(path):
+    """
+    Reads an image in RGB order. Image type is transformed from uint8 to float, and
+    range of values is reduced from [0, 255] to [0, 1].
+    """
+    I = Image.open(path).convert('RGB')  # PIL image.
+    I = np.asarray(I)  # Converting to Numpy array.
+    I = I.astype(np.float64) / 255
+    return I
+
+def to_gray(image):
+    red = image[:, :, 0]
+    green = image[:, :, 1]
+    blue = image[:, :, 2]
+    return (red + green + blue) / 3
 #1
 
 #1b
@@ -34,7 +53,14 @@ def simple_convolution(kernel_arr, signal_arr):
 def case1b():
     kernel_arr = read_data('kernel.txt')
     signal_arr = read_data('signal.txt')
-    print(simple_convolution(kernel_arr, signal_arr))
+    convoluted = simple_convolution(kernel_arr, signal_arr)
+    convoluted_cv2 = cv2.filter2D(signal_arr, -1, kernel_arr)
+    plt.plot(range(signal_arr.shape[0]), signal_arr, label='Original')
+    plt.plot(range(kernel_arr.shape[0]), kernel_arr, label='Kernel')
+    plt.plot(range(convoluted.shape[0]), convoluted, label='Result')
+    plt.plot(range(convoluted_cv2.shape[0]), convoluted_cv2, label='cv2')
+    plt.legend()
+    plt.show()
 
 #1c
 # this function add an edge where all of the values in an added edge are the same
@@ -112,12 +138,140 @@ def case1d():
     # the same limits, so that they are not changed in a way that would show
     # all Gaussian graph moduses having the same height, because they don't
 
-    *_, axes = plt.subplots(1, w)
     for i in range(w):
         border = math.ceil(3 * sigmas[i])
-        axes[i].bar(range(-border, border + 1), kernels[i])
-        axes[i].set_ylim(0, max_modus)
+        plt.plot(range(-border, border + 1), kernels[i], label=f'sigma = {sigmas[i]}')
+        plt.ylim(0, max_modus)
+    plt.legend()
     plt.show()
+
+
+#1e
+def case1e():
+    signal_arr = read_data('signal.txt')
+    k1 = gauss(2)
+    k2 = np.array([0.1, 0.6, 0.4])
+    
+
+    convoluted1 = convolution_with_edges(k1, signal_arr)
+    convoluted11 = convolution_with_edges(k2, convoluted1)
+
+    convoluted2 = convolution_with_edges(k2, signal_arr)
+    convoluted22 = convolution_with_edges(k1, convoluted2)
+
+    convoluted_kernel = convolution_with_edges(k2, k1)
+    convoluted33 = convolution_with_edges(convoluted_kernel, signal_arr)
+
+
+
+
+    *_, axes = plt.subplots(1, 4)
+    xs = range(signal_arr.shape[0])
+    axes[0].plot(xs, signal_arr)
+    axes[0].set_title('s')
+    axes[1].plot(xs, convoluted11)
+    axes[1].set_title('(s * k1)  * k2')
+    axes[2].plot(xs, convoluted22)
+    axes[2].set_title('(s * k2)  * k1')
+    axes[3].plot(xs, convoluted33)
+    axes[3].set_title('s * (k1  * k2)')
+    plt.show()
+
+#2
+
+#2a
+'''
+    Answer:
+    The Gaussian noise is better removed with the Gaussian filter.
+'''
+def convolute2D(image_gray, kernel):
+    horizontaly_convoluted_image = cv2.filter2D(image_gray, -1, kernel)
+    return cv2.filter2D(horizontaly_convoluted_image.T, -1, kernel).T
+
+
+def gaussfilter(image_gray):
+    kernel = gauss(1)
+    return convolute2D(np.copy(image_gray), kernel)
+
+def case2a():
+    lena = imread('images/lena.png')
+    fig, axes = plt.subplots(2, 3)
+
+    lena_gray = to_gray(lena)
+    axes[0, 0].imshow(lena_gray, cmap="gray")
+    axes[0, 0].set_title('Original')
+
+    lena_gaussian_noise = gauss_noise(lena_gray, 0.05)
+    axes[0, 1].imshow(lena_gaussian_noise, cmap="gray")
+    axes[0, 1].set_title('Gaussian noise')
+
+    lena_salt_pepper = sp_noise(lena_gray, 0.05)
+    axes[0, 2].imshow(lena_salt_pepper, cmap="gray")
+    axes[0, 2].set_title('Salt and Pepper')
+
+    fig.delaxes(axes[1, 0])
+
+    lena_gaussian_noise_filtered = gaussfilter(lena_gaussian_noise)
+    axes[1, 1].imshow(lena_gaussian_noise_filtered, cmap="gray")
+    axes[1, 1].set_title('Filtered Gaussian noise')
+
+    lena_salt_pepper_filtered = gaussfilter(lena_salt_pepper)
+    axes[1, 2].imshow(lena_salt_pepper_filtered, cmap="gray")
+    axes[1, 2].set_title('Filtered Salt and Pepper')
+    plt.show()
+
+#2b
+def case2b():
+    n = 3
+    sharpening_kernel = - np.ones((n, n)) / (n ** 2)
+    sharpening_kernel[int(n / 2), int(n / 2)] += 2                    
+    museum = imread('images/museum.jpg')
+    museum_gray = to_gray(museum)
+    museum_sharpened = cv2.filter2D(museum_gray, -1, sharpening_kernel)
+    _, axes = plt.subplots(1, 2)
+    axes[0].imshow(museum_gray, cmap="gray")
+    axes[0].set_title('Original')
+    axes[1].imshow(museum_sharpened, cmap="gray")
+    axes[1].set_title('Sharpened')
+    plt.show()
+
+
+#2c
+def simple_median(I, w):
+    I_new = np.copy(I)
+    kernel = np.ones(w)
+    len, *_ = I.shape
+    arr = np.array([])
+    for i in range(len):
+        arr = np.append(arr, I[i])
+        index_to_remove = i - w
+        if index_to_remove >= 0:
+            arr = np.delete(arr, 0)
+        median = np.median(arr)
+        I_new[i] = median
+    return I_new
+
+def case2c():
+    signal = np.zeros(40)
+    signal[10:20] = 1
+    _, axes = plt.subplots(1, 4)
+    axes[0].plot(range(40), signal)
+    axes[0].set_title('Original')
+
+    signal_corrupted = np.squeeze(sp_noise(np.expand_dims(signal, axis=1)))
+    print(signal_corrupted)
+    axes[1].plot(range(40), signal_corrupted)
+    axes[1].set_title('Corrupted')
+
+    signal_gauss = gaussfilter(signal_corrupted)
+    axes[2].plot(range(40), signal_gauss)
+    axes[2].set_title('Gauss')
+
+    signal_gauss = simple_median(signal_corrupted, 5)
+    axes[3].plot(range(40), signal)
+    axes[3].set_title('Median')
+    plt.show()
+
 
 
 # this is where you run cases:

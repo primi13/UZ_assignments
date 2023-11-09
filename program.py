@@ -337,11 +337,11 @@ def case2d():
 #2e
 def laplace():
     gauss_1 = gauss(50)
-    n = 0.5
+    n = 10
     gauss_1_2D = np.outer(gauss_1, gauss_1) * n
     h, w, *_ = gauss_1_2D.shape
     unit_impulse = np.zeros((h, w))
-    unit_impulse[int(h / 2), int(w / 2)] = n
+    unit_impulse[int(h / 2), int(w / 2)] = n - 3
     laplace = unit_impulse - gauss_1_2D
     return laplace
 
@@ -354,11 +354,11 @@ def case2e():
     lincoln_gray = to_gray(imread('images/lincoln.jpg'))
     obama_gray = to_gray(imread('images/obama.jpg'))
     
-    lincoln_gaussed = gaussfilter(lincoln_gray, 10)
+    lincoln_gaussed = gaussfilter(lincoln_gray, 5)
     obama_laplaced = laplacefilter(obama_gray)
 
-    coeficient_lincoln = 0.5
-    coeficient_obama = 0.5
+    coeficient_lincoln = 0.88
+    coeficient_obama = 0.12
     hibrid = coeficient_lincoln * lincoln_gaussed + \
              coeficient_obama * obama_laplaced
 

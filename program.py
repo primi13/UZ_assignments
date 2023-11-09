@@ -189,8 +189,8 @@ def convolute2D(image_gray, kernel):
     return cv2.filter2D(horizontaly_convoluted_image.T, -1, kernel).T
 
 
-def gaussfilter(image_gray):
-    kernel = gauss(1)
+def gaussfilter(image_gray, sigma = 1):
+    kernel = gauss(sigma)
     return convolute2D(np.copy(image_gray), kernel)
 
 def case2a():
@@ -221,17 +221,22 @@ def case2a():
     plt.show()
 
 #2b
+def sharpen_image(image_gray, kernel_width):
+    sharpening_kernel = - np.ones((kernel_width, kernel_width)) / (kernel_width ** 2)
+    sharpening_kernel[int(kernel_width / 2), int(kernel_width / 2)] += 2                    
+    museum_sharpened = cv2.filter2D(image_gray, -1, sharpening_kernel)
+    return museum_sharpened
+
+
 def case2b():
-    n = 3
-    sharpening_kernel = - np.ones((n, n)) / (n ** 2)
-    sharpening_kernel[int(n / 2), int(n / 2)] += 2                    
+    kernel_width = 3
     museum = imread('images/museum.jpg')
     museum_gray = to_gray(museum)
-    museum_sharpened = cv2.filter2D(museum_gray, -1, sharpening_kernel)
+    museum_sharpened = sharpen_image(museum_gray, kernel_width)
     _, axes = plt.subplots(1, 2)
     axes[0].imshow(museum_gray, cmap="gray")
     axes[0].set_title('Original')
-    axes[1].imshow(museum_sharpened, cmap="gray")
+    axes[1].imshow(museum_sharpened, cmap="gray", vmin=0, vmax=1)
     axes[1].set_title('Sharpened')
     plt.show()
 
@@ -239,7 +244,6 @@ def case2b():
 #2c
 def simple_median(I, w):
     I_new = np.copy(I)
-    kernel = np.ones(w)
     len, *_ = I.shape
     arr = np.array([])
     for i in range(len):
@@ -271,6 +275,110 @@ def case2c():
     axes[3].plot(range(40), signal)
     axes[3].set_title('Median')
     plt.show()
+
+
+#2d
+def median2D(image_noise):
+    image_filtered = np.copy(image_noise)
+    rows, cols, *_ = image_filtered.shape
+    kernel_width = 3
+    kernel_half = int(kernel_width / 2)
+    for i in range(rows):
+        for j in range(cols):
+            up = -kernel_half
+            down = kernel_half
+            left = -kernel_half
+            right = kernel_half
+            
+            if i + up < 0:
+                up = 0 - i
+            elif i + down >= rows:
+                down = rows - 1 - i
+            if j + left < 0:
+                left = 0 - j
+            elif j + right >= cols:
+                right = cols - 1 - j
+            array_for_median = np.copy(
+                            image_filtered[i+up : i+down+1, j+left : j+right+1])
+            image_filtered[i, j] = np.median(array_for_median)
+    return image_filtered
+
+def case2d():
+    lena = imread('images/lena.png')
+    lena_gray = to_gray(lena)
+
+    lena_gauss_noise = gauss_noise(lena_gray)
+    lena_gauss_filtered_gauss = gaussfilter(lena_gauss_noise)
+    lena_gauss_filtered_median = median2D(lena_gauss_noise)
+
+    lena_sp_noise = sp_noise(lena_gray)
+    lena_sp_filtered_gauss = gaussfilter(lena_sp_noise)
+    lena_sp_filtered_median = median2D(lena_sp_noise)
+    
+    fig, axes = plt.subplots(2, 4)
+    axes[0, 0].imshow(lena_gray, cmap="gray")
+    axes[0, 0].set_title('Original')
+    axes[0, 1].imshow(lena_gauss_noise, cmap="gray")
+    axes[0, 1].set_title('Gaussian noise')
+    axes[0, 2].imshow(lena_gauss_filtered_gauss, cmap="gray")
+    axes[0, 2].set_title('Gauss filtered')
+    axes[0, 3].imshow(lena_gauss_filtered_median, cmap="gray")
+    axes[0, 3].set_title('Median filtered')
+    fig.delaxes(axes[1, 0])
+    axes[1, 1].imshow(lena_sp_noise, cmap="gray")
+    axes[1, 1].set_title('Salt and pepper')
+    axes[1, 2].imshow(lena_sp_filtered_gauss, cmap="gray")
+    axes[1, 2].set_title('Gauss filtered')
+    axes[1, 3].imshow(lena_sp_filtered_median, cmap="gray")
+    axes[1, 3].set_title('Median filtered')
+    plt.show()
+
+
+#2e
+def laplace():
+    gauss_1 = gauss(50)
+    n = 0.5
+    gauss_1_2D = np.outer(gauss_1, gauss_1) * n
+    h, w, *_ = gauss_1_2D.shape
+    unit_impulse = np.zeros((h, w))
+    unit_impulse[int(h / 2), int(w / 2)] = n
+    laplace = unit_impulse - gauss_1_2D
+    return laplace
+
+def laplacefilter(image_gray):
+    laplace_kernel = laplace()
+    return cv2.filter2D(np.copy(image_gray), -1, laplace_kernel)
+
+    
+def case2e():
+    lincoln_gray = to_gray(imread('images/lincoln.jpg'))
+    obama_gray = to_gray(imread('images/obama.jpg'))
+    
+    lincoln_gaussed = gaussfilter(lincoln_gray, 10)
+    obama_laplaced = laplacefilter(obama_gray)
+
+    coeficient_lincoln = 0.5
+    coeficient_obama = 0.5
+    hibrid = coeficient_lincoln * lincoln_gaussed + \
+             coeficient_obama * obama_laplaced
+
+    fig, axes = plt.subplots(2, 3)
+    axes[0, 0].imshow(lincoln_gray, cmap="gray")
+    axes[0, 0].set_title('Image1')
+    axes[0, 1].imshow(obama_gray, cmap="gray")
+    axes[0, 1].set_title('Image 2')
+    axes[0, 2].imshow(hibrid, cmap="gray")
+    axes[0, 2].set_title('Result')
+
+    axes[1, 0].imshow(lincoln_gaussed, cmap="gray")
+    axes[1, 0].set_title('Gauss')
+    axes[1, 1].imshow(obama_laplaced, cmap="gray")
+    axes[1, 1].set_title('Laplace')
+    fig.delaxes(axes[1, 2])
+    plt.show()
+
+
+
 
 
 

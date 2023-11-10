@@ -3,7 +3,16 @@ from matplotlib import pyplot as plt
 import math
 import cv2
 from PIL import Image
+import textwrap
 
+'''because np.floor(0.03 / 0.05) = 5, which is wrong, because 0.03 / 0.05
+=5.999999999999999, because of awkward bit representation of numbers'''
+def round_down(num):
+    if abs(round(num) - num) < 0.000001:
+        whole = round(num)
+    else:
+        whole = math.floor(num)
+    return np.int32(whole)
 
 # function from UZ_utils.py:
 def imread(path):
@@ -379,8 +388,70 @@ def case2e():
 
 
 
+#3
+
+#3a
+def myhist3D(image_colored, num_bins, mymin = 0, mymax = 1):
+    myrange = mymax - mymin
+    bin_size = myrange / num_bins
+    H = np.zeros((num_bins, num_bins, num_bins))
+    count = 0
+    h, w, *_ = image_colored.shape
+    for y in range(h):
+        for x in range(w):
+            indexR = round_down((image_colored[y, x, 0] - mymin) / bin_size)
+            indexG = round_down((image_colored[y, x, 1] - mymin) / bin_size)
+            indexB = round_down((image_colored[y, x, 2] - mymin) / bin_size)
+            if indexR == num_bins:
+                indexR -= 1            
+            if indexG == num_bins:
+                indexG -= 1            
+            if indexB == num_bins:
+                indexB -= 1            
+            H[indexR, indexG, indexB] += 1
+            count += 1
+    return H / count
+
+def case3a():
+    obama = imread('images/obama.jpg')
+    obama_hyst = myhist3D(obama, 16)
 
 
+#3b
+def euclidean(h1, h2):
+    return 0
+
+def chi_squared(h1, h2):
+    return 1
+
+def intersection(h1, h2):
+    return 2
+
+def hellinger(h1, h2):
+    return 3
+
+def compare_histograms(h1, h2, str):
+    if (str == "l2"):
+        return euclidean(h1, h2)
+    elif (str == "chi"):
+        return chi_squared(h1, h2)
+    elif (str == "inter"):
+        return intersection(h1, h2)
+    elif (str == "hell"):
+        return hellinger(h1, h2)
+    else:
+        print(textwrap.dedent("""\
+            Not allowed string for distance measure, try again.\n
+            Here are the string commands that are allowed:\n
+                l2 -> Euclidean distance\n
+                chi -> Chi_square distance\n
+                inter -> Intersection\n
+                hell -> Hellinger distance"""))
+        return -1
+
+
+def case3b():
+    print(compare_histograms([], [], "intersection"))
 
 # this is where you run cases:
 # (from case1b to case1e, from case2a to case2e, from case3a to case3e)

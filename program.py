@@ -537,7 +537,7 @@ def sorting_atribute(e):
     
 def case3d():
     images_and_histograms = get_histograms("dataset", 8)
-    reference_image_and_histogram = images_and_histograms.pop(19)
+    reference_image_and_histogram = images_and_histograms[19]
     reference_histogram = reference_image_and_histogram[2]
     
     distance_measure = "hell"
@@ -556,7 +556,7 @@ def case3d():
     #print(images_and_histograms)
     images_and_histograms.sort(key=sorting_atribute)
     
-    closest_images_and_histograms = images_and_histograms[:5]
+    closest_images_and_histograms = images_and_histograms[:6]
     ciah = closest_images_and_histograms
     riah = reference_image_and_histogram
     
@@ -564,23 +564,70 @@ def case3d():
             reference_histogram, reference_histogram, distance_measure)
     
     *_, axes = plt.subplots(2, 6)
+            
+    for i in range(6):
+        axes[0, i].imshow(ciah[i][1])
+        axes[0, i].set_title(ciah[i][0])
+        axes[1, i].bar(range(ciah[i][2].shape[0]), ciah[i][2], width=10)
+        axes[1, i].set_title(f"{distance_measure}={ciah[i][3]:.2f}")
+    plt.show()
+
+def distances_from_reference_array(reference_histogram, images_and_histograms, 
+                                  distance_measure):
+    distances_from_reference = []
+    for image_and_hist in images_and_histograms:
+        hist = image_and_hist[2]
+        dist = compare_histograms(reference_histogram, hist, distance_measure)
+        distances_from_reference.append(dist)
+    return distances_from_reference
+
+
+#3e
+def case3e():
+    images_and_histograms = get_histograms("dataset", 8)
+    reference_image_and_histogram = images_and_histograms[19]
+    reference_histogram = reference_image_and_histogram[2]
     
-    axes[0, 0].imshow(riah[1])
-    axes[0, 0].set_title(riah[0])
-    axes[1, 0].bar(range(riah[2].shape[0]), riah[2], width=10)
-    axes[1, 0].set_title(f"{distance_measure}={nothing:.2f}")
+    distances_from_reference_all = []
+    distances_from_reference_sorted_all = []
+    distance_mesaures = ["l2", "chi", "inter", "hell"]    
+    
+    # all distance measures
+    for distance_mesaure in distance_mesaures:
+        distances_from_reference = distances_from_reference_array(reference_histogram, 
+                                                                images_and_histograms, 
+                                                                distance_mesaure)
+        distances_from_reference_sorted = distances_from_reference.copy()
+        distances_from_reference_sorted.sort()
         
-    for k in range(1, 6):
-        i = k - 1 
-        axes[0, k].imshow(ciah[i][1])
-        axes[0, k].set_title(ciah[i][0])
-        axes[1, k].bar(range(ciah[i][2].shape[0]), ciah[i][2], width=10)
-        axes[1, k].set_title(f"{distance_measure}={ciah[i][3]:.2f}")
+        distances_from_reference_all.append(distances_from_reference)
+        distances_from_reference_sorted_all.append(distances_from_reference_sorted)
+        
+    distances_from_reference_hell = distances_from_reference_all.pop()
+    distances_from_reference_sorted_hell = distances_from_reference_sorted_all.pop()
+    
+    num_minimums = 5
+    circled = distances_from_reference_sorted_hell[:num_minimums]
+    circled_indexes = []
+    for i, val in enumerate(circled):
+        circled_indexes.append(distances_from_reference_hell.index(val))
+    
+    w = len(distances_from_reference)
+    x = range(w)
+    
+    args = {'linestyle':'', 'marker': 'o', 'markerfacecolor':'none', 'markeredgecolor':'orange'}
+    
+    *_, axes = plt.subplots(1, 2)
+    axes[0].plot(x, distances_from_reference_hell)
+    axes[0].plot(circled_indexes, circled, **args)
+    axes[0].set_title('Unsorted')
+    axes[1].plot(x, distances_from_reference_sorted_hell)
+    axes[1].plot(range(num_minimums), circled, **args)
+    axes[1].set_title('Sorted')
     plt.show()
     
     
-    
-    
+
 # this is where you run cases:
 # (from case1b to case1e, from case2a to case2e, from case3a to case3f)
 
@@ -599,5 +646,5 @@ def case3d():
 #case3b()
 #case3c()
 case3d()
-#case3e()
+case3e()
 #case3f()

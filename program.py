@@ -3,6 +3,7 @@ from matplotlib import pyplot as plt
 import math
 import cv2
 from PIL import Image
+import os
 import textwrap
 
 '''because np.floor(0.03 / 0.05) = 5, which is wrong, because 0.03 / 0.05
@@ -394,41 +395,62 @@ def case2e():
 def myhist3D(image_colored, num_bins, mymin = 0, mymax = 1):
     myrange = mymax - mymin
     bin_size = myrange / num_bins
-    H = np.zeros((num_bins, num_bins, num_bins))
-    count = 0
-    h, w, *_ = image_colored.shape
-    for y in range(h):
-        for x in range(w):
-            indexR = round_down((image_colored[y, x, 0] - mymin) / bin_size)
-            indexG = round_down((image_colored[y, x, 1] - mymin) / bin_size)
-            indexB = round_down((image_colored[y, x, 2] - mymin) / bin_size)
-            if indexR == num_bins:
-                indexR -= 1            
-            if indexG == num_bins:
-                indexG -= 1            
-            if indexB == num_bins:
-                indexB -= 1            
-            H[indexR, indexG, indexB] += 1
-            count += 1
-    return H / count
+    H2 = np.zeros((num_bins, num_bins, num_bins))
+    
+    round_down_vectorized = np.vectorize(round_down)
+    indexes = round_down_vectorized((image_colored - mymin) / bin_size)
+    indexes -= (indexes == num_bins)
+    flattened_indexes = indexes.reshape((-1, 3))
+    
+    unique, counts = np.unique(flattened_indexes, axis=0, return_counts=True)
+    H2[unique[:, 0], unique[:, 1], unique[:, 2]] = counts
+    
+    return H2 / np.sum(H2)
+
+def myhist1D(image_colored, num_bins):
+    return myhist3D(image_colored, num_bins, 0, 1).reshape(-1)
 
 def case3a():
     obama = imread('images/obama.jpg')
-    obama_hyst = myhist3D(obama, 16)
+    obama_hist = myhist3D(obama, 16)
 
 
 #3b
 def euclidean(h1, h2):
-    return 0
+    diff = h1 - h2
+    square = diff * diff
+    value_sumed = np.sum(square)
+    return np.sqrt(value_sumed)
 
 def chi_squared(h1, h2):
-    return 1
+    diff = h1 - h2
+    square = diff * diff
+    numerator = square
+    
+    sumed = h1 + h2
+    epsilon = 1e-10
+    denominator = sumed + epsilon
+
+    fraction = numerator / denominator
+    value_sumed = np.sum(fraction)
+    return value_sumed / 2
 
 def intersection(h1, h2):
-    return 2
+    diff = h1 - h2
+    mask1 = diff < 0
+    mask2 = ~mask1
+    minimum = h1 * mask1 + h2 * mask2
+    value_sumed = np.sum(minimum)
+    return 1 - value_sumed
 
 def hellinger(h1, h2):
-    return 3
+    sqrt1 = np.sqrt(h1)
+    sqrt2 = np.sqrt(h2)
+    diff_sqrt = sqrt1 - sqrt2
+    square = diff_sqrt * diff_sqrt
+    value_sumed = np.sum(square)
+    value_half = value_sumed / 2
+    return np.sqrt(value_half)
 
 def compare_histograms(h1, h2, str):
     if (str == "l2"):
@@ -451,10 +473,116 @@ def compare_histograms(h1, h2, str):
 
 
 def case3b():
-    print(compare_histograms([], [], "intersection"))
+    obama = imread('images/obama.jpg')
+    obama_hist = myhist3D(obama, 16)
+    
+    lincoln = imread('images/lincoln.jpg')
+    lincoln_hist = myhist3D(lincoln, 16)
+    print(compare_histograms(obama_hist, lincoln_hist, "l2"))
 
+
+#3c
+def case3c():
+    obj1 = imread('dataset/object_01_1.png')
+    obj2 = imread('dataset/object_02_1.png')
+    obj3 = imread('dataset/object_03_1.png')
+    obj1_hist = myhist3D(obj1, 8).reshape(-1)
+    obj2_hist = myhist3D(obj2, 8).reshape(-1)
+    obj3_hist = myhist3D(obj3, 8).reshape(-1)
+    
+    *_, axes = plt.subplots(2, 3)
+    
+    dist11 = compare_histograms(obj1_hist, obj1_hist, "l2")
+    dist12 = compare_histograms(obj1_hist, obj2_hist, "l2")
+    dist13 = compare_histograms(obj1_hist, obj3_hist, "l2")
+    
+    axes[0, 0].imshow(obj1)
+    axes[0, 0].set_title('Image 1')
+    axes[0, 1].imshow(obj2)
+    axes[0, 1].set_title('Image 2')
+    axes[0, 2].imshow(obj3)
+    axes[0, 2].set_title('Image 3')
+    axes[1, 0].bar(range(obj1_hist.shape[0]), obj1_hist, 5)
+    axes[1, 0].set_title(f'l2(h1, h1) = {dist11:.2f}')
+    axes[1, 1].bar(range(obj2_hist.shape[0]), obj2_hist, 5)
+    axes[1, 1].set_title(f'l2(h1, h2) = {dist12:.2f}')
+    axes[1, 2].bar(range(obj3_hist.shape[0]), obj3_hist, 5)
+    axes[1, 2].set_title(f'l2(h1, h3) = {dist13:.2f}')
+    
+    plt.show()
+    
+    
+def get_histograms(folder_path, num_bins):
+    # Get a list of all files in the folder
+    files = os.listdir(folder_path)
+    
+        # Filter only files with image extensions
+    image_files = [f for f in files if f.lower().
+                   endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
+    
+    images_and_histograms = []
+    
+    # Open and process each image
+    for image_file in image_files:
+        image_path = os.path.join(folder_path, image_file)
+        
+        image = imread(image_path)
+        hist = myhist1D(image, num_bins)
+        images_and_histograms.append((image_file, image, hist))
+        #print(images_and_histograms)
+    return images_and_histograms
+
+def sorting_atribute(e):
+    return e[3]
+    
+def case3d():
+    images_and_histograms = get_histograms("dataset", 8)
+    reference_image_and_histogram = images_and_histograms.pop(19)
+    reference_histogram = reference_image_and_histogram[2]
+    
+    distance_measure = "hell"
+    
+    i = 0
+    for image_and_hist in images_and_histograms:
+        hist = image_and_hist[2]
+        dist = compare_histograms(
+            reference_histogram, hist, distance_measure)
+        images_and_histograms[i] = (image_and_hist[0],
+                                    image_and_hist[1],
+                                    image_and_hist[2],
+                                    dist)
+        i += 1
+    
+    #print(images_and_histograms)
+    images_and_histograms.sort(key=sorting_atribute)
+    
+    closest_images_and_histograms = images_and_histograms[:5]
+    ciah = closest_images_and_histograms
+    riah = reference_image_and_histogram
+    
+    nothing = compare_histograms(
+            reference_histogram, reference_histogram, distance_measure)
+    
+    *_, axes = plt.subplots(2, 6)
+    
+    axes[0, 0].imshow(riah[1])
+    axes[0, 0].set_title(riah[0])
+    axes[1, 0].bar(range(riah[2].shape[0]), riah[2], width=10)
+    axes[1, 0].set_title(f"{distance_measure}={nothing:.2f}")
+        
+    for k in range(1, 6):
+        i = k - 1 
+        axes[0, k].imshow(ciah[i][1])
+        axes[0, k].set_title(ciah[i][0])
+        axes[1, k].bar(range(ciah[i][2].shape[0]), ciah[i][2], width=10)
+        axes[1, k].set_title(f"{distance_measure}={ciah[i][3]:.2f}")
+    plt.show()
+    
+    
+    
+    
 # this is where you run cases:
-# (from case1b to case1e, from case2a to case2e, from case3a to case3e)
+# (from case1b to case1e, from case2a to case2e, from case3a to case3f)
 
 #case1b()
 #case1c()
@@ -470,5 +598,6 @@ def case3b():
 #case3a()
 #case3b()
 #case3c()
-#case3d()
+case3d()
 #case3e()
+#case3f()

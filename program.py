@@ -31,6 +31,10 @@ def to_gray(image):
     green = image[:, :, 1]
     blue = image[:, :, 2]
     return (red + green + blue) / 3
+
+def norm(np_arr):
+    return np_arr / np.sum(np_arr)
+
 #1
 
 #1b
@@ -395,7 +399,7 @@ def case2e():
 def myhist3D(image_colored, num_bins, mymin = 0, mymax = 1):
     myrange = mymax - mymin
     bin_size = myrange / num_bins
-    H2 = np.zeros((num_bins, num_bins, num_bins))
+    H = np.zeros((num_bins, num_bins, num_bins))
     
     round_down_vectorized = np.vectorize(round_down)
     indexes = round_down_vectorized((image_colored - mymin) / bin_size)
@@ -403,9 +407,9 @@ def myhist3D(image_colored, num_bins, mymin = 0, mymax = 1):
     flattened_indexes = indexes.reshape((-1, 3))
     
     unique, counts = np.unique(flattened_indexes, axis=0, return_counts=True)
-    H2[unique[:, 0], unique[:, 1], unique[:, 2]] = counts
+    H[unique[:, 0], unique[:, 1], unique[:, 2]] = counts
     
-    return H2 / np.sum(H2)
+    return H / np.sum(H)
 
 def myhist1D(image_colored, num_bins):
     return myhist3D(image_colored, num_bins, 0, 1).reshape(-1)
@@ -512,7 +516,7 @@ def case3c():
     plt.show()
     
     
-def get_histograms(folder_path, num_bins):
+def get_histograms1D(folder_path, num_bins):
     # Get a list of all files in the folder
     files = os.listdir(folder_path)
     
@@ -535,18 +539,24 @@ def get_histograms(folder_path, num_bins):
 def sorting_atribute(e):
     return e[3]
     
-def case3d():
-    images_and_histograms = get_histograms("dataset", 8)
+def case3d(num_bins_per_dim = 8,  weights = None):
+    images_and_histograms = get_histograms1D("dataset", num_bins_per_dim)
     reference_image_and_histogram = images_and_histograms[19]
     reference_histogram = reference_image_and_histogram[2]
+    if weights is not None:
+        reference_histogram = weigh(reference_histogram, weights)
     
     distance_measure = "hell"
+    
     
     i = 0
     for image_and_hist in images_and_histograms:
         hist = image_and_hist[2]
-        dist = compare_histograms(
-            reference_histogram, hist, distance_measure)
+        if weights is not None:
+            hist = weigh(hist, weights)
+        dist = compare_histograms(reference_histogram,
+                                  hist,
+                                  distance_measure)
         images_and_histograms[i] = (image_and_hist[0],
                                     image_and_hist[1],
                                     image_and_hist[2],
@@ -560,9 +570,6 @@ def case3d():
     ciah = closest_images_and_histograms
     riah = reference_image_and_histogram
     
-    nothing = compare_histograms(
-            reference_histogram, reference_histogram, distance_measure)
-    
     *_, axes = plt.subplots(2, 6)
             
     for i in range(6):
@@ -573,18 +580,20 @@ def case3d():
     plt.show()
 
 def distances_from_reference_array(reference_histogram, images_and_histograms, 
-                                  distance_measure):
+                                  distance_measure, weights = None):
     distances_from_reference = []
     for image_and_hist in images_and_histograms:
         hist = image_and_hist[2]
+        if weights is not None:
+            hist = weigh(hist, weights)
         dist = compare_histograms(reference_histogram, hist, distance_measure)
         distances_from_reference.append(dist)
     return distances_from_reference
 
 
 #3e
-def case3e():
-    images_and_histograms = get_histograms("dataset", 8)
+def case3e(num_bins_per_dim = 8,  weights = None):
+    images_and_histograms = get_histograms1D("dataset", num_bins_per_dim)
     reference_image_and_histogram = images_and_histograms[19]
     reference_histogram = reference_image_and_histogram[2]
     
@@ -594,9 +603,11 @@ def case3e():
     
     # all distance measures
     for distance_mesaure in distance_mesaures:
-        distances_from_reference = distances_from_reference_array(reference_histogram, 
-                                                                images_and_histograms, 
-                                                                distance_mesaure)
+        distances_from_reference = distances_from_reference_array(
+                                    reference_histogram, 
+                                    images_and_histograms, 
+                                    distance_mesaure,
+                                    weights)
         distances_from_reference_sorted = distances_from_reference.copy()
         distances_from_reference_sorted.sort()
         
@@ -615,7 +626,8 @@ def case3e():
     w = len(distances_from_reference)
     x = range(w)
     
-    args = {'linestyle':'', 'marker': 'o', 'markerfacecolor':'none', 'markeredgecolor':'orange'}
+    args = {'linestyle':'', 'marker': 'o', 'markerfacecolor':'none', 
+            'markeredgecolor':'orange'}
     
     *_, axes = plt.subplots(1, 2)
     axes[0].plot(x, distances_from_reference_hell)
@@ -626,7 +638,76 @@ def case3e():
     axes[1].set_title('Sorted')
     plt.show()
     
+
+#3f
+'''
+    Answer:
+    The prevailing color (by a lot) is a bit above (0, 0, 0), which is a
+    dark grey color and that is because most images have only this color or
+    something similar for the background, while other color in the foreground
+    are distributed more equally and so there aren't so many outstanders.
     
+    Yes, the weighing helped with retrieving the relevant result, now the
+    similarity check is better.
+'''
+def get_only_histograms1D(folder_path, num_bins):
+    # Get a list of all files in the folder
+    files = os.listdir(folder_path)
+    
+        # Filter only files with image extensions
+    image_files = [f for f in files if f.lower().
+                   endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
+    
+    histograms = []
+    
+    # Open and process each image
+    for image_file in image_files:
+        image_path = os.path.join(folder_path, image_file)
+        
+        image = imread(image_path)
+        hist = myhist1D(image, num_bins)
+        histograms.append(hist)
+    return histograms
+
+scalling_constant = 10
+
+# x wil be the frequency of the bin
+def weigh_func(x):
+    return np.exp(-scalling_constant * x) 
+
+def weigh(np_arr, np_weights):
+    return norm(np_arr * np_weights)
+
+def get_weights(num_bins_per_dim):
+
+    images_and_histograms = get_only_histograms1D("dataset", num_bins_per_dim)
+
+    summed_histogram = np.zeros(num_bins_per_dim ** 3)
+    for image_and_hist in images_and_histograms:
+        summed_histogram += image_and_hist
+
+    #norm = len(images_and_histograms)
+    #summed_histogram /= norm
+     
+    #max_index = np.argmax(summed_histogram)
+    #print(f"max = (x: {max_index}, y: {summed_histogram[max_index]})")
+    
+    w = summed_histogram.shape[0]
+    plt.bar(range(w), summed_histogram, width=5)
+    plt.show()
+    
+    weigh_func_vect = np.vectorize(weigh_func)
+    weighted_histogram = weigh_func_vect(summed_histogram)
+    return norm(weighted_histogram) # normalization
+
+def case3f():
+    global scalling_constant
+    scalling_constant = 10
+    num_bins_per_dim = 8
+    weights = get_weights(num_bins_per_dim)
+
+    case3d(num_bins_per_dim, weights)
+
 
 # this is where you run cases:
 # (from case1b to case1e, from case2a to case2e, from case3a to case3f)
@@ -645,6 +726,6 @@ def case3e():
 #case3a()
 #case3b()
 #case3c()
-case3d()
-case3e()
-#case3f()
+#case3d()
+#case3e()
+case3f()

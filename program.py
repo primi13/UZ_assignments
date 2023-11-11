@@ -39,7 +39,7 @@ def norm(np_arr):
 
 #1b
 '''
-    Answer:
+Answer:
     The shape of the kernel is that of a discrete Gaussian curve, which is
     a binomial distribution. 
     The sum of the elements in the kernel should be 1,
@@ -195,12 +195,13 @@ def case1e():
 
 #2a
 '''
-    Answer:
+Answer:
     The Gaussian noise is better removed with the Gaussian filter.
 '''
 def convolute2D(image_gray, kernel):
+    kernel = np.array([kernel])
     horizontaly_convoluted_image = cv2.filter2D(image_gray, -1, kernel)
-    return cv2.filter2D(horizontaly_convoluted_image.T, -1, kernel).T
+    return cv2.filter2D(horizontaly_convoluted_image, -1, kernel.T)
 
 
 def gaussfilter(image_gray, sigma = 1):
@@ -256,6 +257,13 @@ def case2b():
 
 
 #2c
+'''
+Answer:
+    The median filter is much better at removing the salt and pepper noise 
+    that the Gaussian filter. Median cannot be performed in any order and
+    always get the same result. Those filters are called non-linear, because
+    they are not comutative and not asociative.
+'''
 def simple_median(I, w):
     I_new = np.copy(I)
     len, *_ = I.shape
@@ -277,7 +285,6 @@ def case2c():
     axes[0].set_title('Original')
 
     signal_corrupted = np.squeeze(sp_noise(np.expand_dims(signal, axis=1)))
-    print(signal_corrupted)
     axes[1].plot(range(40), signal_corrupted)
     axes[1].set_title('Corrupted')
 
@@ -292,6 +299,20 @@ def case2c():
 
 
 #2d
+'''
+Answer:
+    Time complexity for the Gaussian filtering is O(r * c * w) and the
+    time complexity for the median filtering is O(r * c * w^2 * log(w)),
+    where r and c are the number of rows and columns in the image repectively
+    and w is the width of the filter kernel. 
+    
+    However there exists an algorithm
+    that in the worst case has a time complexity of O(n) for finding the k-th smallest
+    number in the array of size n and the k would be round_down(len(array) / 2) to find the
+    median, which we can also do in O(n), so the improved time complexity for the median
+    filtering would then be O(r * c * w^2).
+    
+'''
 def median2D(image_noise):
     image_filtered = np.copy(image_noise)
     rows, cols, *_ = image_filtered.shape
@@ -486,6 +507,19 @@ def case3b():
 
 
 #3c
+'''
+Answer:
+    Object_03_1.png (boat/toy) is closer to object_01_1.png than
+    object_02_1.png (onion) according to the L2 (Euclidean) distance.
+    
+    According to chi-squared, intersection and Hellinger distances 
+    the boat toy is also closer.
+    
+    The most dominant color is the background color, which is close to black.
+'''
+dist_measures = ["l2", "chi", "inter", "hell"]
+
+
 def case3c():
     obj1 = imread('dataset/object_01_1.png')
     obj2 = imread('dataset/object_02_1.png')
@@ -493,13 +527,16 @@ def case3c():
     obj1_hist = myhist3D(obj1, 8).reshape(-1)
     obj2_hist = myhist3D(obj2, 8).reshape(-1)
     obj3_hist = myhist3D(obj3, 8).reshape(-1)
+
+    dist_measure = dist_measures[3]
+    
+    dist11 = compare_histograms(obj1_hist, obj1_hist, dist_measure)
+    dist12 = compare_histograms(obj1_hist, obj2_hist, dist_measure)
+    dist13 = compare_histograms(obj1_hist, obj3_hist, dist_measure)
+
     
     *_, axes = plt.subplots(2, 3)
-    
-    dist11 = compare_histograms(obj1_hist, obj1_hist, "l2")
-    dist12 = compare_histograms(obj1_hist, obj2_hist, "l2")
-    dist13 = compare_histograms(obj1_hist, obj3_hist, "l2")
-    
+        
     axes[0, 0].imshow(obj1)
     axes[0, 0].set_title('Image 1')
     axes[0, 1].imshow(obj2)
@@ -507,15 +544,31 @@ def case3c():
     axes[0, 2].imshow(obj3)
     axes[0, 2].set_title('Image 3')
     axes[1, 0].bar(range(obj1_hist.shape[0]), obj1_hist, 5)
-    axes[1, 0].set_title(f'l2(h1, h1) = {dist11:.2f}')
+    axes[1, 0].set_title(f'{dist_measure}(h1, h1) = {dist11:.2f}')
     axes[1, 1].bar(range(obj2_hist.shape[0]), obj2_hist, 5)
-    axes[1, 1].set_title(f'l2(h1, h2) = {dist12:.2f}')
+    axes[1, 1].set_title(f'{dist_measure}(h1, h2) = {dist12:.2f}')
     axes[1, 2].bar(range(obj3_hist.shape[0]), obj3_hist, 5)
-    axes[1, 2].set_title(f'l2(h1, h3) = {dist13:.2f}')
+    axes[1, 2].set_title(f'{dist_measure}(h1, h3) = {dist13:.2f}')
     
     plt.show()
     
+#3d
+'''
+Answer:
+    Probably the best image retrieval distance mesaure is hellinger,
+    because it gave the biggest difference in distances from pictures
+    that were only rotated reference images and other images.
     
+    The retrieved sequence doesn't really change with the number of bins, 
+    but it could if the number of bins would be really high, for example 256,
+    because then the noise would play a larger role in claculating the distance
+    and of course if the number of bins is too small like less then 4 or 5, then
+    the algorithm is not accurate enough.
+    
+    The distribution of pixel values into the 3D histogram array really isn't affected
+    by the number of bins, but the next operations are affecting the run time
+    such as reshaping the histogram, sorting it and especially displaying it using plt.bar().
+'''
 def get_histograms1D(folder_path, num_bins):
     # Get a list of all files in the folder
     files = os.listdir(folder_path)
@@ -539,14 +592,15 @@ def get_histograms1D(folder_path, num_bins):
 def sorting_atribute(e):
     return e[3]
     
-def case3d(num_bins_per_dim = 8,  weights = None):
+def case3d(num_bins_per_dim = 32,  weights = None):
     images_and_histograms = get_histograms1D("dataset", num_bins_per_dim)
     reference_image_and_histogram = images_and_histograms[19]
     reference_histogram = reference_image_and_histogram[2]
     if weights is not None:
         reference_histogram = weigh(reference_histogram, weights)
     
-    distance_measure = "hell"
+    distance_measure = dist_measures[3]
+
     
     
     i = 0
@@ -728,4 +782,4 @@ def case3f():
 #case3c()
 #case3d()
 #case3e()
-case3f()
+#case3f()

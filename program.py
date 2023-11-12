@@ -6,6 +6,26 @@ from PIL import Image
 import os
 import textwrap
 
+# the function from a2_utils, but changed a bit so I added it here
+# and commented the function in a2_utils program, but it also works
+# without this commenting
+def sp_noise(I, percent=.1, change = None):
+	# input: grayscale image in range [0, 1], percent of corrupted pixels
+	# output: modified image
+
+	assert np.max(I) <= 1, "Image needs to be in range [0, 1]"
+	assert I.dtype == np.float64, "Image needs to be in np.float64"
+
+	res = I.copy()
+
+	if change is not None:
+		res[np.random.rand(I.shape[0], I.shape[1]) < percent / 2] = change
+	else:
+		res[np.random.rand(I.shape[0], I.shape[1]) < percent / 2] = 1
+	res[np.random.rand(I.shape[0], I.shape[1]) < percent / 2] = 0
+
+	return res
+
 '''because np.floor(0.03 / 0.05) = 5, which is wrong, because 0.03 / 0.05
 =5.999999999999999, because of awkward bit representation of numbers'''
 def round_down(num):

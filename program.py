@@ -110,7 +110,15 @@ def convolution_with_edges(kernel_arr, signal_arr):
 def case1c():
     kernel_arr = read_data('kernel.txt')
     signal_arr = read_data('signal.txt')
-    print(convolution_with_edges(kernel_arr, signal_arr))
+    convoluted = convolution_with_edges(kernel_arr, signal_arr)
+    convoluted_cv2 = cv2.filter2D(signal_arr, -1, kernel_arr)
+    plt.plot(range(signal_arr.shape[0]), signal_arr, label='Original')
+    plt.plot(range(kernel_arr.shape[0]), kernel_arr, label='Kernel')
+    plt.plot(range(convoluted.shape[0]), convoluted, "or", label='Result')
+    plt.plot(range(convoluted_cv2.shape[0]), convoluted_cv2, label='cv2')
+    plt.legend()
+    plt.show()
+
 
 
 
@@ -189,6 +197,7 @@ def case1e():
     axes[2].set_title('(s * k2)  * k1')
     axes[3].plot(xs, convoluted33)
     axes[3].set_title('s * (k1  * k2)')
+    plt.tight_layout()
     plt.show()
 
 #2
@@ -233,7 +242,10 @@ def case2a():
     lena_salt_pepper_filtered = gaussfilter(lena_salt_pepper)
     axes[1, 2].imshow(lena_salt_pepper_filtered, cmap="gray")
     axes[1, 2].set_title('Filtered Salt and Pepper')
+    
+    plt.tight_layout()
     plt.show()
+
 
 #2b
 def sharpen_image(image_gray, kernel_width):
@@ -280,21 +292,28 @@ def simple_median(I, w):
 def case2c():
     signal = np.zeros(40)
     signal[10:20] = 1
+    
     _, axes = plt.subplots(1, 4)
     axes[0].plot(range(40), signal)
     axes[0].set_title('Original')
-
-    signal_corrupted = np.squeeze(sp_noise(np.expand_dims(signal, axis=1)))
+    axes[0].set_ylim(top=4)
+    
+    signal_corrupted = np.squeeze(sp_noise(np.expand_dims(signal, axis=1), percent=0.1, change=3))
     axes[1].plot(range(40), signal_corrupted)
     axes[1].set_title('Corrupted')
+    axes[1].set_ylim(top=4)
 
-    signal_gauss = gaussfilter(signal_corrupted)
+    signal_gauss = gaussfilter(signal_corrupted, sigma=2)
     axes[2].plot(range(40), signal_gauss)
     axes[2].set_title('Gauss')
-
-    signal_gauss = simple_median(signal_corrupted, 5)
-    axes[3].plot(range(40), signal)
+    axes[2].set_ylim(top=4)
+    
+    signal_median = simple_median(signal_corrupted, 5)
+    axes[3].plot(range(40), signal_median)
     axes[3].set_title('Median')
+    axes[3].set_ylim(top=4)
+    
+    plt.tight_layout()
     plt.show()
 
 
@@ -366,6 +385,7 @@ def case2d():
     axes[1, 2].set_title('Gauss filtered')
     axes[1, 3].imshow(lena_sp_filtered_median, cmap="gray")
     axes[1, 3].set_title('Median filtered')
+    plt.tight_layout()
     plt.show()
 
 
@@ -410,6 +430,8 @@ def case2e():
     axes[1, 1].imshow(obama_laplaced, cmap="gray")
     axes[1, 1].set_title('Laplace')
     fig.delaxes(axes[1, 2])
+    
+    plt.tight_layout()
     plt.show()
 
 
@@ -437,7 +459,7 @@ def myhist1D(image_colored, num_bins):
 
 def case3a():
     obama = imread('images/obama.jpg')
-    obama_hist = myhist3D(obama, 16)
+    obama_hist = myhist3D(obama, 256)
 
 
 #3b
@@ -592,7 +614,7 @@ def get_histograms1D(folder_path, num_bins):
 def sorting_atribute(e):
     return e[3]
     
-def case3d(num_bins_per_dim = 32,  weights = None):
+def case3d(num_bins_per_dim = 8,  weights = None):
     images_and_histograms = get_histograms1D("dataset", num_bins_per_dim)
     reference_image_and_histogram = images_and_histograms[19]
     reference_histogram = reference_image_and_histogram[2]
@@ -690,6 +712,7 @@ def case3e(num_bins_per_dim = 8,  weights = None):
     axes[1].plot(x, distances_from_reference_sorted_hell)
     axes[1].plot(range(num_minimums), circled, **args)
     axes[1].set_title('Sorted')
+    plt.tight_layout()
     plt.show()
     
 

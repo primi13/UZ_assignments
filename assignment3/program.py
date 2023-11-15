@@ -171,8 +171,8 @@ def case1c():
 
 #1d
 def first_derivatives_of_image(image_gray):
-    gauss_kernel = gauss(5)
-    gauss_derivative_kernel = gaussddx(5)[0]
+    gauss_kernel = gauss(1)
+    gauss_derivative_kernel = gaussddx(1)[0]
     
     der_x = convolute2D(image_gray, gauss_derivative_kernel, 
                            gauss_kernel)

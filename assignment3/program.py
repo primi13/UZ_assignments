@@ -170,9 +170,9 @@ def case1c():
 
 
 #1d
-def first_derivatives_of_image(image_gray):
-    gauss_kernel = gauss(1)
-    gauss_derivative_kernel = gaussddx(1)[0]
+def first_derivatives_of_image(image_gray, sigma):
+    gauss_kernel = gauss(sigma)
+    gauss_derivative_kernel = gaussddx(sigma)[0]
     
     der_x = convolute2D(image_gray, gauss_derivative_kernel, 
                            gauss_kernel)
@@ -181,14 +181,14 @@ def first_derivatives_of_image(image_gray):
     
     return der_x, der_y
 
-def second_derivatives_of_image(image_gray):
-    der_x, der_y = first_derivatives_of_image(image_gray)
-    der_xx, der_xy = first_derivatives_of_image(der_x)
-    _, der_yy = first_derivatives_of_image(der_y)
+def second_derivatives_of_image(image_gray, sigma):
+    der_x, der_y = first_derivatives_of_image(image_gray, sigma)
+    der_xx, der_xy = first_derivatives_of_image(der_x, sigma)
+    _, der_yy = first_derivatives_of_image(der_y, sigma)
     return der_xx, der_xy, der_yy
 
-def gradient_magnitude(image_gray):
-    der_x, der_y = first_derivatives_of_image(image_gray)
+def gradient_magnitude(image_gray, sigma):
+    der_x, der_y = first_derivatives_of_image(image_gray, sigma)
     magnitudes = np.sqrt((der_x * der_x) + (der_y * der_y))
     angles = np.arctan2(der_y, der_x)
     return magnitudes, angles
@@ -202,7 +202,7 @@ def case1d():
     
     der_x, der_y = first_derivatives_of_image(museum_gray)
     der_xx, der_xy, der_yy = second_derivatives_of_image(museum_gray)
-    mags, angles = gradient_magnitude(museum_gray)
+    mags, angles = gradient_magnitude(museum_gray, 1)
     
     _, axes = plt.subplots(2, 4)
     images = np.array([[museum_gray, der_x, der_y, mags], 
@@ -218,7 +218,7 @@ def case1d():
 
 #1e
 def gridHist(image_grid):
-    mags, angles = gradient_magnitude(image_grid)
+    mags, angles = gradient_magnitude(image_grid, 1)
     num_bins = 8
     max_angle = np.pi
     min_angle = - np.pi
@@ -392,21 +392,121 @@ def assignment2case3d(num_bins_per_dim = 8, gradient=False):
 def case1e():
     assignment2case3d(gradient=True)
     
+
+
+#2
+
+#2a
+def normal_thresholding(image_gray, threshold):
+    image_mask = np.copy(image_gray)
+    image_mask[image_gray < threshold] = 0
+    image_mask[image_gray >= threshold] = 1
+    return image_mask.astype(np.uint8)
+
+def findedges(image_gray, sigma, theta):
+    mags, angles = gradient_magnitude(image_gray, sigma)
+    return normal_thresholding(mags, theta), mags, angles
+
+def case2a():
+    museum_gray = to_gray(imread('images/museum.jpg'))
+    museum_masks = [] # it will be list of length 8
+    for i in np.arange(0.0, 0.25, 0.025):
+        print(i)
+        museum_masks.append(findedges(museum_gray, 2, i)[0])
+    _, axes = plt.subplots(2, 5)
+    for i in range(2):
+        for j in range(5):
+            if i == 1 and j == 4:
+                axes[i, j].imshow(museum_gray, cmap="gray",
+                                vmin=0, vmax=1)
+                axes[i, j].set_title("Gray museum")
+            else:
+                axes[i, j].imshow(museum_masks[i*5 + j], cmap="gray",
+                                vmin=0, vmax=1)
+                axes[i, j].set_title(f"tsh = {(i * 5 + j) / 40}")
+    plt.show()
+    
+             
+#2b
+def angle_to_neighbors(angle):
+    increments = [(0, -1), (1, -1), (1, 0), (1, 1), 
+                  (0, 1), (-1, 1), (-1, 0), (-1, -1)]
+    angle = (angle + (9*np.pi)/8) % (2 * np.pi)
+    index = (np.floor(angle / (np.pi / 4))).astype(np.uint8)
+    return increments[index]
+
+def non_maxima_suppresion(image_mask, mags, angles):
+    image_thinned = np.copy(image_mask)
+    r, c, *_ = image_thinned.shape
+    for i in range(r):
+        for j in range(c):
+            angle = angles[i, j]            
+            i_inc, j_inc = angle_to_neighbors(angle)
+            i_new_1 = i + i_inc
+            j_new_1 = j + j_inc
+            if i_new_1 > 0 and i_new_1 < r and j_new_1 > 0 and j_new_1 < c:
+                if mags[i_new_1, j_new_1] > mags[i, j]:
+                    image_thinned[i, j] = 0
+                    continue
+            
+            i_new_2 = i - i_inc
+            j_new_2 = j - j_inc
+            if i_new_2 > 0 and i_new_2 < r and j_new_2 > 0 and j_new_2 < c:
+                if mags[i_new_2, j_new_2] > mags[i, j]:
+                    image_thinned[i, j] = 0
+    return image_thinned
+            
+
+def case2b():
+    museum_gray = to_gray(imread('images/museum.jpg'))
+    museum_mask, mags, angles = findedges(museum_gray, 1, 0.16)
+    museum_thinned = non_maxima_suppresion(museum_mask, mags, angles)
+    _, axes = plt.subplots(1, 2)
+    axes[0].imshow(museum_mask, cmap="gray")
+    axes[1].imshow(museum_thinned, cmap="gray")
+    plt.show()
     
     
-    
-    
-        
+#2c
+def hystresis_thresholding(num_labels, label_array, image_gray, tsh_low, tsh_high):
+    new_image_mask = np.copy(image_gray)
+    for i in range(1, num_labels):
+        mask = label_array == i
+        label_cut = new_image_mask[mask]
+        if np.max(label_cut) < tsh_high:
+            label_cut = 0
+        else:
+            low_mask = label_cut < tsh_low
+            label_cut[low_mask] = 0
+            label_cut[~low_mask] = 1
+        new_image_mask[mask] = label_cut
+    return new_image_mask.astype(np.uint8)
+
+def case2c():
+    museum_gray = to_gray(imread('images/museum.jpg'))
+    museum_mask, mags, angles = findedges(museum_gray, 1, 0.16)
+    museum_thinned = non_maxima_suppresion(museum_mask, mags, angles)
+    output = cv2.connectedComponentsWithStats(museum_thinned, 8) #connectivity=8
+    museum_hysteresised = hystresis_thresholding(output[0], output[1], 
+                                                 museum_gray, 0.04, 0.16)
+    _, axes = plt.subplots(1, 3)
+    axes[0].imshow(museum_mask, cmap="gray")
+    axes[1].imshow(museum_thinned, cmap="gray")
+    axes[2].imshow(museum_hysteresised, cmap="gray")
+    plt.show()
+
+
+
 # this is where you run cases:
 
 #case1b()
 #case1c()
 #case1d()
-case1e()
+#case1e()
 
 #case2a()
 #case2b()
-#case2c()
+case2c()
 
 #case3a()
 #case3b()

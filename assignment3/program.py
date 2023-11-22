@@ -400,8 +400,7 @@ def case1e():
 def normal_thresholding(image_gray, threshold):
     image_mask = np.copy(image_gray)
     image_mask[image_gray < threshold] = 0
-    image_mask[image_gray >= threshold] = 1
-    return image_mask.astype(np.uint8)
+    return image_mask
 
 def findedges(image_gray, sigma, theta):
     mags, angles = gradient_magnitude(image_gray, sigma)
@@ -484,16 +483,134 @@ def hystresis_thresholding(num_labels, label_array, image_gray, tsh_low, tsh_hig
 
 def case2c():
     museum_gray = to_gray(imread('images/museum.jpg'))
-    museum_mask, mags, angles = findedges(museum_gray, 1, 0.16)
+    museum_mask, mags, angles = findedges(museum_gray, sigma=1, theta=0.02)
+    museum_mask = (museum_mask * 255).astype(np.uint8)
     museum_thinned = non_maxima_suppresion(museum_mask, mags, angles)
-    output = cv2.connectedComponentsWithStats(museum_thinned, 8) #connectivity=8
+    output = cv2.connectedComponentsWithStats(museum_thinned) #connectivity=8
+    #print(output)
+    #print(output[1][:15, :5])
     museum_hysteresised = hystresis_thresholding(output[0], output[1], 
-                                                 museum_gray, 0.04, 0.16)
-    _, axes = plt.subplots(1, 3)
-    axes[0].imshow(museum_mask, cmap="gray")
-    axes[1].imshow(museum_thinned, cmap="gray")
-    axes[2].imshow(museum_hysteresised, cmap="gray")
+                                                 museum_gray, 0.16, 0.40)
+    _, axes = plt.subplots(1, 4)
+    axes[0].imshow(museum_gray, cmap="gray")
+    axes[1].imshow(museum_mask, cmap="gray")
+    axes[2].imshow(museum_thinned, cmap="gray")
+    axes[3].imshow(museum_hysteresised, cmap="gray")
     plt.show()
+
+
+#3
+
+#3a
+def line_through_point(x: int, y: int, acc, D):
+    # map theta = -pi/2 to -num_bins/2 and pi/2 to num_bins_2 linearly
+    r, c, *_ = acc.shape
+    '''this will be an array of zeroes and ones and this array will then
+    be added to the input array'''
+    local_array = np.zeros((r, c), dtype=np.int8)
+    theta_increment = np.pi / c
+    i = 0 # represents theta coordinate (x coordinate), which is a whole number
+    for theta in np.arange(-np.pi/2, np.pi/2, theta_increment):
+        rho = x * np.cos(theta) + y * np.sin(theta)
+        # normalizing rho to interval [0, r], so that the lines fall inside
+        # of the graph
+        rho_on_graph = int((rho - (-D)) / (D - (-D)) * r)
+        if 0 <= rho_on_graph and rho_on_graph < r:
+            local_array[rho_on_graph, i] = 1
+        i += 1
+                
+    acc += local_array
+
+
+def case3a():
+    #create an accumulator array
+    num_bins = 300
+    coord = np.array([[(10, 10), (30, 60)], [(50, 20), (80, 90)]])
+    acc = np.zeros((num_bins, num_bins))
+    accs = np.array([[acc.copy(), acc.copy()], [acc.copy(), acc.copy()]])
+    _, axes = plt.subplots(2, 2)
+    for i in range(2):
+        for j in range(2):
+            x, y = coord[i, j]
+            line_through_point(x, y, accs[i, j], 150)
+            axes[i, j].imshow(accs[i, j])
+            axes[i, j].set_title(f"x = {x}, y = {y}")
+    plt.show()
+    
+    
+
+#3b
+def hough_find_lines(num_bins_theta, num_bins_rho, image_mask):
+    acc = np.zeros((num_bins_rho, num_bins_theta))
+    r, c, *_ = image_mask.shape
+    D = np.sqrt(r * r + c * c)
+    for y in range(r):
+        for x in range(c):
+            if image_mask[y, x] > 0:
+                line_through_point(x, y, acc, D)
+    return acc
+
+
+def case3b():
+    num_bins_theta = 200
+    num_bins_rho = 200
+    
+    synthetic = np.zeros((100, 100))
+    synthetic[10, 10] = 1
+    synthetic[20, 10] = 1
+    acc = hough_find_lines(num_bins_theta, num_bins_rho, synthetic)
+    plt.imshow(acc)
+    plt.title("Synthetic")
+    plt.show()
+
+    
+    oneline = to_gray(imread("images/oneline.png"))
+    acc = hough_find_lines(num_bins_theta, num_bins_rho, oneline)
+    plt.imshow(acc)
+    plt.title("Oneline")
+    plt.show()
+
+    rectangle = to_gray(imread("images/rectangle.png"))
+    acc = hough_find_lines(num_bins_theta, num_bins_rho, rectangle)
+    plt.imshow(acc)
+    plt.title("Rectangle")
+    plt.show()
+
+
+#3c
+around_pixel = [(0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1), (1, 0), (1, 1)]
+def is_not_max_in_neighborhood(y, x, arr):
+    r, c, *_ = arr.shape
+    for i in range(8):
+        y_inc, x_inc = around_pixel[i]
+        y_new = y + y_inc
+        x_new = x + x_inc
+        # we cannot access a cell in the array if its index is over the edge
+        if y_new < 0 or y_new >= r or x_new < 0 or x_new >= c:
+            continue
+        if arr[y_new, x_new] > arr[y, x]:
+            return True
+    return False
+
+def nonmaxima_suppression_box(acc_arr):
+    acc_arr_new = acc_arr.copy()
+    r, c, *_ = acc_arr_new.shape
+    for y in range(r):
+        for x in range(c):
+            if is_not_max_in_neighborhood(y, x, acc_arr_new):
+                acc_arr_new[y, x] = 0
+    return acc_arr_new
+
+def case3c():
+    num_bins_theta = 200
+    num_bins_rho = 200
+    oneline = to_gray(imread("images/oneline.png"))
+    acc = hough_find_lines(num_bins_theta, num_bins_rho, oneline)
+    plt.imshow(acc)
+    plt.title("Oneline")
+    plt.show()
+    acc = nonmaxima_suppression_box(acc)
+    print(np.argmax(acc))
 
 
 
@@ -506,11 +623,11 @@ def case2c():
 
 #case2a()
 #case2b()
-case2c()
+#case2c()
 
 #case3a()
 #case3b()
-#case3c()
+case3c()
 #case3d()
 #case3e()
 #case3f()

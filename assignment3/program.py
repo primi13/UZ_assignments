@@ -1,11 +1,56 @@
 import os
-import a3_utils as a3
-import UZ_utils
 import math
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 from PIL import Image
+
+# function from a3_utils, because I changed it
+def draw_line(rho, theta, h, w, axis = None):
+    """
+    Example usage:
+
+    plt.imshow(I)
+    draw_line(rho1, theta1, h, w)
+    draw_line(rho2, theta2, h, w)
+    draw_line(rho3, theta3, h, w)
+    plt.show()
+
+    "rho" and "theta": Parameters for the line which will be drawn.
+    "h", "w": Height and width of an image.
+    """
+
+    c = np.cos(theta)
+    s = np.sin(theta)
+
+    xs = []
+    ys = []
+    if s != 0:
+        y = int(rho / s)
+        if 0 <= y < h:
+            xs.append(0)
+            ys.append(y)
+
+        y = int((rho - w * c) / s)
+        if 0 <= y < h:
+            xs.append(w - 1)
+            ys.append(y)
+    if c != 0:
+        x = int(rho / c)
+        if 0 <= x < w:
+            xs.append(x)
+            ys.append(0)
+
+        x = int((rho - h * s) / c)
+        if 0 <= x < w:
+            xs.append(x)
+            ys.append(h - 1)
+
+    if axis is not None:
+        axis.plot(xs[:2], ys[:2], 'r', linewidth=.7)
+    else:    
+        plt.plot(xs[:2], ys[:2], 'r', linewidth=.7)
+
 
 '''because np.floor(0.03 / 0.05) = 5, which is wrong, because 0.03 / 0.05
 =5.999999999999999, because of awkward bit representation of numbers'''
@@ -661,7 +706,7 @@ def draw_lines_for_image(image_gray, axis, image_name, tsh_final):
     for rho_on_graph, theta_i in indices:
         rho = get_rho_back(rho_on_graph, acc_r, r, c)
         theta = get_theta_back(theta_i, acc_c)
-        a3.draw_line(rho, theta, r, c, axis)
+        draw_line(rho, theta, r, c, axis)
     axis.imshow(image_mask, cmap="gray")
     axis.set_title(image_name)
 

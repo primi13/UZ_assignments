@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from PIL import Image
 
 # function from a3_utils, because I changed it
-def draw_line(rho, theta, h, w, axis = None):
+def draw_line(rho, theta, h, w, axis = None, linewidth=0.7):
     """
     Example usage:
 
@@ -47,9 +47,9 @@ def draw_line(rho, theta, h, w, axis = None):
             ys.append(h - 1)
 
     if axis is not None:
-        axis.plot(xs[:2], ys[:2], 'r', linewidth=.7)
+        axis.plot(xs[:2], ys[:2], 'r', linewidth=linewidth)
     else:    
-        plt.plot(xs[:2], ys[:2], 'r', linewidth=.7)
+        plt.plot(xs[:2], ys[:2], 'r', linewidth=linewidth)
 
 
 '''because np.floor(0.03 / 0.05) = 5, which is wrong, because 0.03 / 0.05
@@ -547,7 +547,7 @@ def case2c():
 #3
 
 #3a
-def line_through_point(x: int, y: int, acc, D):
+def lines_through_point(x: int, y: int, acc, D):
     # map theta = -pi/2 to -num_bins/2 and pi/2 to num_bins_2 linearly
     r, c, *_ = acc.shape
     '''this will be an array of zeroes and ones and this array will then
@@ -576,7 +576,7 @@ def case3a():
     for i in range(2):
         for j in range(2):
             x, y = coord[i, j]
-            line_through_point(x, y, accs[i, j], 150)
+            lines_through_point(x, y, accs[i, j], 150)
             axes[i, j].imshow(accs[i, j])
             axes[i, j].set_title(f"x = {x}, y = {y}")
     plt.show()
@@ -590,41 +590,56 @@ def normal_thresholding2(arr, tsh):
     arr_new[arr_new >= tsh] = 1
     return arr_new
 
-def hough_find_lines(num_bins_theta, num_bins_rho, image_gray, tsh):
-    image_mags_mask = findedges(image_gray, 1, tsh, normalize=True)[0]
+def hough_find_lines(num_bins_theta, num_bins_rho, image_gray, 
+                     sigma, tsh, use_angles=False, circle=False):
+    image_mags_mask, _, angles = findedges(image_gray, sigma, 
+                                           tsh, normalize=True)
     acc = np.zeros((num_bins_rho, num_bins_theta))
     r, c, *_ = image_mags_mask.shape
     D = np.sqrt(r * r + c * c)
-    for y in range(r):
-        for x in range(c):
-            if image_mags_mask[y, x] > 0:
-                line_through_point(x, y, acc, D)
+    
+    if not use_angles and not circle:
+        for y in range(r):
+            for x in range(c):
+                if image_mags_mask[y, x] > 0:
+                    lines_through_point(x, y, acc, D)
+    elif not circle:
+        for y in range(r):
+            for x in range(c):
+                if image_mags_mask[y, x] > 0:
+                    lines_through_point_fixed_theta(x, y, acc, 
+                                                   D, angles[y, x])
+    else:
+        for y in range(r):
+            for x in range(c):
+                if image_mags_mask[y, x] > 0:
+                    circles_through_point(x, y, acc, D)
     return normalizeValues(acc)
 
 
 def case3b():
     num_bins_theta = 200
     num_bins_rho = 200
-    tsh_for_all = 0.7
+    tsh_find_edges = 0.7
     
     synthetic = np.zeros((100, 100))
     synthetic[10, 10] = 1
     synthetic[10, 20] = 1
     acc = hough_find_lines(num_bins_theta, num_bins_rho, 
-                           synthetic, tsh_for_all)
+                           synthetic, 1, tsh_find_edges)
     _, axes = plt.subplots(1, 3)
     axes[0].imshow(acc)
     axes[0].set_title("Synthetic")
     
     oneline = to_gray(imread("images/oneline.png"))
     acc = hough_find_lines(num_bins_theta, num_bins_rho, 
-                           oneline, tsh_for_all)
+                           oneline, 1, tsh_find_edges)
     axes[1].imshow(acc)
     axes[1].set_title("Oneline")
 
     rectangle = to_gray(imread("images/rectangle.png"))
     acc = hough_find_lines(num_bins_theta, num_bins_rho, 
-                           rectangle, tsh_for_all)
+                           rectangle, 1, tsh_find_edges)
     axes[2].imshow(acc)
     axes[2].set_title("Rectangle")
     plt.show()
@@ -657,10 +672,10 @@ def nonmaxima_suppression_box(acc_arr):
 def case3c():
     num_bins_theta = 200
     num_bins_rho = 200
-    tsh_for_all = 0.7
+    tsh_find_edges = 0.7
     oneline = to_gray(imread("images/oneline.png"))
     acc = hough_find_lines(num_bins_theta, num_bins_rho, 
-                           oneline, tsh_for_all)
+                           oneline, 1, tsh_find_edges)
     _, axes = plt.subplots(1, 2)
     axes[0].imshow(acc)
     axes[0].set_title("Oneline")
@@ -675,40 +690,72 @@ def get_rho_back(rho_on_graph, acc_r, r, c):
     D = np.sqrt(r * r + c * c)
     return ((rho_on_graph * 2 * D) / acc_r) - D
 
-
 def get_theta_back(i, acc_c):
-    theta = -np.pi/2 + np.pi / acc_c * i
-    if theta <= 0:
-        return 0
-    elif theta >= np.pi:
-        return np.pi
-    else:
-        return theta
+    return -np.pi/2 + np.pi / acc_c * i
 
+def sort_acc_atr(e):
+    return e[0]
 
-def draw_lines_for_image(image_gray, axis, image_name, tsh_final):
-    num_bins_theta = 200
-    num_bins_rho = 200
-    tsh_for_all = 0.7
+def visualize_the_acc(arr, r, c, axis):
+    l = len(arr)
+    acc = np.zeros((r, c))
+    for i in range(l):
+        acc[arr[i][1], arr[i][2]] = 1
+    axis.imshow(acc)
+
+def draw_lines_for_image(image_gray, axis, image_name=None, sigma=1, 
+                         num_bins_theta=200, num_bins_rho=200, 
+                         tsh_find_edges=0.7, tsh_final=1, n=None,
+                         use_angles=False):
 
     acc = hough_find_lines(num_bins_theta, num_bins_rho, 
-                           image_gray, tsh_for_all)
-    image_mask = normal_thresholding2(image_gray, tsh_for_all)
+                           image_gray, sigma, tsh_find_edges,
+                           use_angles)
         
-    acc = nonmaxima_suppression_box(acc)
-    acc[acc < tsh_final] = 0
-        
-    indices_separate = np.where(acc > 0)
-    indices = list(zip(indices_separate[0], indices_separate[1]))
-    
-    acc_r, acc_c, *_ = acc.shape
+    acc_maxima = nonmaxima_suppression_box(acc)
+            
+    acc_r, acc_c, *_ = acc_maxima.shape
     r, c, *_ = image_gray.shape
-    for rho_on_graph, theta_i in indices:
-        rho = get_rho_back(rho_on_graph, acc_r, r, c)
-        theta = get_theta_back(theta_i, acc_c)
-        draw_line(rho, theta, r, c, axis)
-    axis.imshow(image_mask, cmap="gray")
-    axis.set_title(image_name)
+    
+    if n is None:
+        # display all the lines, that survive the thresholding
+        # of the cells of the accumulator array
+        acc_maxima[acc_maxima < tsh_final] = 0
+        indices_separate = np.where(acc_maxima > 0)
+        indices = list(zip(indices_separate[0], indices_separate[1]))
+
+        for rho_on_graph, theta_i in indices:
+            rho = get_rho_back(rho_on_graph, acc_r, r, c)
+            theta = get_theta_back(theta_i, acc_c)
+            draw_line(rho, theta, r, c, axis)
+            
+        image_mask = normal_thresholding2(image_gray, tsh_find_edges)
+        axis.imshow(image_mask, cmap="gray")
+    else:
+        # display n lines that have the highest value
+        # in the accumulator array (are the most sure)
+        
+        #acc_with_indices = []
+        #for y in range(acc_r):
+        #    for x in range(acc_c):
+        #        acc_with_indices.append((acc_maxima[y, x], y, x))
+        #acc_with_indices.sort(key=sort_acc_atr, reverse=True)
+        #first_n_acc_with_indices = acc_with_indices[:n]
+        #visualize_the_acc(first_n_acc_with_indices, acc_r, acc_c, axis)
+        acc_maxima2 = acc_maxima.copy()
+        for _ in range(n):
+            max_index = np.argmax(acc_maxima2)
+            max_index_2d = np.unravel_index(max_index, acc_maxima2.shape)
+            rho = get_rho_back(max_index_2d[0], acc_r, r, c)
+            theta = get_theta_back(max_index_2d[1], acc_c)
+            acc_maxima2[max_index_2d] = 0
+            print(f"rho={rho}, theta={theta}")
+            draw_line(rho, theta, r, c, axis, linewidth=1)
+
+    if image_name is not None:
+        axis.set_title(image_name)
+    
+    return acc
 
 def case3d():
     _, axes = plt.subplots(1, 3)
@@ -716,16 +763,120 @@ def case3d():
     synthetic = np.zeros((100, 100))
     synthetic[10, 10] = 1
     synthetic[10, 20] = 1
-    draw_lines_for_image(synthetic, axes[0], "Synthetic", 0.90)
+    draw_lines_for_image(synthetic, axes[0], "Synthetic", 
+                         1, tsh_final=0.80)
     
     oneline = to_gray(imread("images/oneline.png"))
-    draw_lines_for_image(oneline, axes[1], "Oneline", 1.00)
+    draw_lines_for_image(oneline, axes[1], "Oneline", 
+                         1, tsh_final=1.00)
 
     rectangle = to_gray(imread("images/rectangle.png"))
-    draw_lines_for_image(rectangle, axes[2], "Rectangle", 0.40)
+    draw_lines_for_image(rectangle, axes[2], "Rectangle", 
+                         1, tsh_final=0.35)
 
     plt.show()
+
+ 
+#3e
+def case3e():
+    num_bins_theta = 300
+    num_bins_rho = 300
+    bricks = imread("images/bricks.jpg")
+    pier = imread("images/pier.jpg")
     
+    _, axes = plt.subplots(2, 2)
+    axes[1, 0].imshow(bricks)
+    axes[1, 1].imshow(pier)
+    bricks_acc = draw_lines_for_image(to_gray(bricks), 
+                                      axes[1, 0], 
+                                      sigma=3, 
+                                      num_bins_theta=num_bins_theta,
+                                      num_bins_rho=num_bins_rho,
+                                      tsh_find_edges=0.6,
+                                      n=10)
+    pier_acc = draw_lines_for_image(to_gray(pier), 
+                                      axes[1, 1], 
+                                      sigma=3, 
+                                      num_bins_theta=num_bins_theta,
+                                      num_bins_rho=num_bins_rho,
+                                      tsh_find_edges=0.3,
+                                      n=10)
+    axes[0, 0].imshow(bricks_acc)
+    axes[0, 0].set_title('bricks.jpg')
+    axes[0, 1].imshow(pier_acc)
+    axes[0, 1].set_title('pier.jpg')
+    plt.show()
+
+
+#3f
+def lines_through_point_fixed_theta(x: int, y: int, acc, D, angle):
+    # map theta = -pi/2 to -num_bins/2 and pi/2 to num_bins_2 linearly
+    r, c, *_ = acc.shape
+    
+    # changing the value of angle on the interval [-pi, pi] to
+    # a value of theta on the interval [-pi/2, pi/2]
+    border = np.pi / 2
+    if angle < -border:
+        theta = border - (-border - angle) # wrap (underflow)
+    elif angle > border:
+        theta = -border + (angle - border) # wrap (overflow)
+    else:
+        theta = angle # no wrap (already ok value)
+    
+    # normalizing theta 
+    theta_min = -border
+    theta_max = border
+    #theta_on_graph_range = c
+    theta_on_graph = int((theta - theta_min) / (theta_max - theta_min) * (c - 1))
+    
+    # represents theta coordinate (x coordinate), 
+    # which is a whole number
+    rho = x * np.cos(theta) + y * np.sin(theta)
+
+    # normalizing rho to interval [0, r], so that the 
+    # lines fall inside of the graph
+    rho_min = -D
+    rho_max = D
+    #rho_on_graph_range = r
+    rho_on_graph = int((rho - rho_min) / (rho_max - rho_min) * (r - 1))
+                
+    acc[rho_on_graph, theta_on_graph] += 1
+
+def case3f():
+    num_bins_theta = 400
+    num_bins_rho = 400
+    rectangle = imread("images/rectangle.png")
+    rectangle_gray = to_gray(rectangle)
+    rectangle_mask = normal_thresholding2(rectangle_gray, 0.7)
+    
+    _, axes = plt.subplots(2, 2)
+    axes[1, 0].imshow(rectangle_mask, cmap="gray")
+    axes[1, 1].imshow(rectangle_mask, cmap="gray")
+    rec_acc_normal = draw_lines_for_image(rectangle_gray,
+                                      axes[1, 0], 
+                                      sigma=3, 
+                                      num_bins_theta=num_bins_theta,
+                                      num_bins_rho=num_bins_rho,
+                                      tsh_find_edges=0.5,
+                                      tsh_final=0.4)
+    rec_acc_oriented = draw_lines_for_image(rectangle_gray, 
+                                      axes[1, 1], 
+                                      sigma=2, 
+                                      num_bins_theta=num_bins_theta,
+                                      num_bins_rho=num_bins_rho,
+                                      tsh_find_edges=0.7,
+                                      tsh_final=0.2, 
+                                      use_angles=True)
+    axes[0, 0].imshow(rec_acc_normal)
+    axes[0, 0].set_title('normal')
+    axes[0, 1].imshow(rec_acc_oriented)
+    axes[0, 1].set_title('orientation')
+    plt.show()
+
+
+#3g
+def circles_through_point(x, y, acc, D):
+    return    
 
 
 
@@ -743,8 +894,8 @@ def case3d():
 #case3a()
 #case3b()
 #case3c()
-case3d()
+#case3d()
 #case3e()
 #case3f()
-#case3g()
+case3g()
 #case3h()

@@ -591,19 +591,19 @@ def normal_thresholding2(arr, tsh):
     return arr_new
 
 def hough_find_lines(num_bins_theta, num_bins_rho, image_gray, 
-                     sigma, tsh, use_angles=False, circle=False):
+                     sigma, tsh, use_angles=False, radius=None):
     image_mags_mask, _, angles = findedges(image_gray, sigma, 
                                            tsh, normalize=True)
     acc = np.zeros((num_bins_rho, num_bins_theta))
     r, c, *_ = image_mags_mask.shape
     D = np.sqrt(r * r + c * c)
     
-    if not use_angles and not circle:
+    if not use_angles and radius is None:
         for y in range(r):
             for x in range(c):
                 if image_mags_mask[y, x] > 0:
                     lines_through_point(x, y, acc, D)
-    elif not circle:
+    elif radius is None:
         for y in range(r):
             for x in range(c):
                 if image_mags_mask[y, x] > 0:
@@ -613,7 +613,7 @@ def hough_find_lines(num_bins_theta, num_bins_rho, image_gray,
         for y in range(r):
             for x in range(c):
                 if image_mags_mask[y, x] > 0:
-                    circles_through_point(x, y, acc, D)
+                    circles_through_point(x, y, acc, D, radius)
     return normalizeValues(acc)
 
 
@@ -734,14 +734,6 @@ def draw_lines_for_image(image_gray, axis, image_name=None, sigma=1,
     else:
         # display n lines that have the highest value
         # in the accumulator array (are the most sure)
-        
-        #acc_with_indices = []
-        #for y in range(acc_r):
-        #    for x in range(acc_c):
-        #        acc_with_indices.append((acc_maxima[y, x], y, x))
-        #acc_with_indices.sort(key=sort_acc_atr, reverse=True)
-        #first_n_acc_with_indices = acc_with_indices[:n]
-        #visualize_the_acc(first_n_acc_with_indices, acc_r, acc_c, axis)
         acc_maxima2 = acc_maxima.copy()
         for _ in range(n):
             max_index = np.argmax(acc_maxima2)
@@ -875,8 +867,41 @@ def case3f():
 
 
 #3g
-def circles_through_point(x, y, acc, D):
-    return    
+def circles_through_point(x, y, acc, D, radius):
+    # map theta = -pi/2 to -num_bins/2 and pi/2 to num_bins_2 linearly
+    r, c, *_ = acc.shape
+    '''this will be an array of zeroes and ones and this array will then
+    be added to the input array'''
+    local_array = np.zeros((r, c), dtype=np.int8)
+    theta_increment = 2 * np.pi / 360 # it tracks each degree
+    for theta in np.arange(-np.pi, np.pi, theta_increment):
+        a = int(x - radius * np.cos(theta))
+        b = int(y + radius * np.sin(theta))
+        
+        # normalizing rho to interval [0, r], so that the lines fall inside
+        # of the graph
+        #rho_on_graph = int((rho - (-D)) / (D - (-D)) * r)
+        if a >= 0 and a < r and b >= 0 and b < c:
+            local_array[a, b] = 1            
+    acc += local_array
+
+def case3g():
+    eclipse = imread("images/eclipse.jpg")
+    eclipse_gray = to_gray(eclipse)
+    eclipse_acc = hough_find_lines(500, 700, eclipse_gray, 1,
+                                   0.15, radius = 47)
+    eclipse_acc_maxima = nonmaxima_suppression_box(eclipse_acc)
+    eclipse_acc_final = normal_thresholding(eclipse_acc_maxima, 0.3)
+    
+    indices_separate = np.where(eclipse_acc_final > 0)
+    indices = list(zip(indices_separate[0], indices_separate[1]))
+    print(indices)
+    
+    _, axes = plt.subplots(1, 3)
+    axes[0].imshow(eclipse_acc)
+    axes[1].imshow(eclipse_acc_maxima)
+    axes[2].imshow(eclipse_acc_final)
+    plt.show()
 
 
 

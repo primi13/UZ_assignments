@@ -956,10 +956,66 @@ def dim_norm_acc(acc, image_r, image_c):
 
     print(acc_fact)
     return acc * acc_fact
+
+def sorting_points(e):
+    return e[0] # return the x coordinate of the point
+
+def distance_between_middle_two_points(point1, point2, 
+                                       point3, point4):
+    arr = [point1, point2, point3, point4]
+    arr.sort(key=sorting_points)
+    p1 = arr[1]
+    p2 = arr[2]
+    return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
+        
+
+def dim_norm_acc(acc, image_r, image_c):
+    acc_r, acc_c, *_ = acc.shape
+    r = image_r
+    c = image_c
+    
+    for j in range(acc_c):
+        theta = get_theta_back(j, acc_c)
+        if abs(theta) == np.pi / 2:
+            acc[:, j] /= image_c
+            continue
+        if theta == 0:
+            acc[:, j] /= image_r
+            continue
+            
+        k = np.tan(np.pi / 2 - theta)
+        for i in range(acc_r):
+            if acc[i, j] > 0:
+                rho = get_rho_back(i, acc_r, r, c)
+                if rho == 0:
+                    acc[i, j] = 0
+                    continue
+                
+                n = - rho / np.sin(theta)
+                # intersection with x = 0
+                intersection1 = (0, n)
+                # intersection with x = c
+                intersection2 = (c, k * c + n)
+                # intersection with y = 0
+                intersection3 = (-n / k, 0)
+                # intersection with y = -r
+                intersection4 = ((-r - n) / k, -r)
+
+                # find out, which are the middle two points
+                # and calculate a distance between them
+                dist = distance_between_middle_two_points(
+                            intersection1,
+                            intersection2,
+                            intersection3,
+                            intersection4)
+                acc[i, j] /= dist
+    
+    return normalizeValues(acc)
+
     
 def image_to_lines(image, bin_size_rows, bin_size_columns,
-                       sigma=1, tsh_before=0.6, use_angles=False,
-                       tsh_after=0.4, axis=plt):
+                       sigma=1, tsh_before=0.3, use_angles=False,
+                       tsh_after=0.7, axis=plt):
     # you must change the accumulator array returned by function
     # hough_find_lines so that it favoures lines that are parralel
     # to the shorter dimension of the image and then you put that
@@ -992,7 +1048,10 @@ def image_to_lines(image, bin_size_rows, bin_size_columns,
 
 def case3h():
     rectangle = imread('images/rectangle.png')
-    image_to_lines(rectangle, 200, 200)
+    image_to_lines(rectangle, 200, 200, tsh_after=0.4)
+    
+    pier = imread('images/pier.jpg')
+    image_to_lines(pier, 400, 400)
     
 
 # this is where you run cases:

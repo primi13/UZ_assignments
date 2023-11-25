@@ -720,7 +720,7 @@ def draw_lines_for_image(image_gray, axis, image_name=None, sigma=1,
     if n is None:
         # display all the lines, that survive the thresholding
         # of the cells of the accumulator array
-        acc_maxima[acc_maxima < tsh_final] = 0
+        acc_maxima = normal_thresholding(acc_maxima, tsh_final)
         indices_separate = np.where(acc_maxima > 0)
         indices = list(zip(indices_separate[0], indices_separate[1]))
 
@@ -885,25 +885,115 @@ def circles_through_point(x, y, acc, D, radius):
             local_array[a, b] = 1            
     acc += local_array
 
+def draw_circle(axis, x, y, radius):
+    x_coord = []
+    y_coord = []
+    change_scales = 2 * np.pi / 180
+    for angle in range(180):
+        theta = angle * change_scales
+        x_coord.append(x + np.cos(theta) * radius)
+        y_coord.append(y + np.sin(theta) * radius)
+    axis.plot(x_coord, y_coord, color="green")
+
 def case3g():
+    radius = 47
     eclipse = imread("images/eclipse.jpg")
     eclipse_gray = to_gray(eclipse)
     eclipse_acc = hough_find_lines(500, 700, eclipse_gray, 1,
-                                   0.15, radius = 47)
+                                   0.08, radius = radius)
     eclipse_acc_maxima = nonmaxima_suppression_box(eclipse_acc)
-    eclipse_acc_final = normal_thresholding(eclipse_acc_maxima, 0.3)
+    eclipse_acc_final = normal_thresholding(eclipse_acc_maxima, 0.287)
     
     indices_separate = np.where(eclipse_acc_final > 0)
     indices = list(zip(indices_separate[0], indices_separate[1]))
     print(indices)
     
-    _, axes = plt.subplots(1, 3)
+    _, axes = plt.subplots(1, 2)
     axes[0].imshow(eclipse_acc)
-    axes[1].imshow(eclipse_acc_maxima)
-    axes[2].imshow(eclipse_acc_final)
+    axes[1].imshow(eclipse)
+    for i in range(len(indices)):
+        draw_circle(axes[1], indices[i][0], indices[i][1], radius) 
     plt.show()
 
 
+#3h
+def dim_norm_acc(acc, image_r, image_c):
+    if image_r == image_c: 
+        return acc
+    
+    acc_fact = np.zeros(acc.shape)
+    theta_dim_size = acc.shape[0]
+    half_theta_dim_size = int(theta_dim_size / 2)
+    even_theta_dim_size = theta_dim_size % 2 == 0
+    if image_r < image_c:
+        # prioritize vertical lines (angles closer to 
+        # abs(theta) = 0)
+        inc = (image_c / image_r - 1) / half_theta_dim_size
+        value = 1
+        for j in range(theta_dim_size):
+            acc_fact[:, j] = value
+            if even_theta_dim_size and j == half_theta_dim_size - 1:
+                value = value
+            else:
+                if j < half_theta_dim_size:
+                    value += inc
+                else:
+                    value -= inc
+    else:
+        # prioritize horizontal lines (angles closer to 
+        # abs(theta) = pi/2)
+        inc = (image_r / image_c - 1) / half_theta_dim_size
+        value = image_r / image_c
+        for j in range(theta_dim_size):
+            acc_fact[:, j] = value
+            if even_theta_dim_size and j == half_theta_dim_size - 1:
+                value = value
+            else:
+                if j < half_theta_dim_size:
+                    value -= inc
+                else:
+                    value += inc
+
+    print(acc_fact)
+    return acc * acc_fact
+    
+def image_to_lines(image, bin_size_rows, bin_size_columns,
+                       sigma=1, tsh_before=0.6, use_angles=False,
+                       tsh_after=0.4, axis=plt):
+    # you must change the accumulator array returned by function
+    # hough_find_lines so that it favoures lines that are parralel
+    # to the shorter dimension of the image and then you put that
+    # transformed accumulator array in nonmaxima_suppression_box
+    # function, which calculates local maxima
+    r, c, *_ = image.shape
+    image_gray = to_gray(image)
+    image_acc = hough_find_lines(bin_size_columns, bin_size_rows,
+                                 image_gray, 
+                                 sigma=sigma,
+                                 tsh=tsh_before,
+                                 use_angles=use_angles)
+    image_acc_dim_normed = dim_norm_acc(image_acc, r, c)
+    image_acc_maxima = nonmaxima_suppression_box(image_acc_dim_normed)
+    acc_final =  normal_thresholding(image_acc_maxima, 
+                                          threshold=tsh_after)
+
+    indices_separate = np.where(acc_final > 0)
+    indices = list(zip(indices_separate[0], indices_separate[1]))
+
+    axis.imshow(image)
+    image_r, image_c, *_ = image.shape
+    acc_r, acc_c, *_ = acc_final.shape
+    for rho_on_graph, theta_i in indices:
+        rho = get_rho_back(rho_on_graph, acc_r, r, c)
+        theta = get_theta_back(theta_i, acc_c)
+        draw_line(rho, theta, r, c, axis)
+    plt.show()
+    
+
+def case3h():
+    rectangle = imread('images/rectangle.png')
+    image_to_lines(rectangle, 200, 200)
+    
 
 # this is where you run cases:
 
@@ -922,5 +1012,5 @@ def case3g():
 #case3d()
 #case3e()
 #case3f()
-case3g()
-#case3h()
+#case3g()
+case3h()

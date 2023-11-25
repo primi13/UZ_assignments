@@ -148,8 +148,8 @@ def convolute2D(image_gray, kernel1, kernel2 = None,
     return cv2.filter2D(once_convoluted_image, -1, kernel2)
 
 def case1c():
-    gauss_derivative_kernel, upper = gaussddx(5)
-    gauss_kernel = gauss(5)
+    gauss_derivative_kernel, upper = gaussddx(4)
+    gauss_kernel = gauss(4)
     #plt.plot(range(-upper, upper + 1), gauss_derivative_kernel)
     #plt.plot(range(-upper, upper + 1), gauss_kernel)
     #plt.show()
@@ -215,7 +215,7 @@ def case1c():
 
 
 #1d
-def first_derivatives_of_image(image_gray, sigma):
+def first_derivatives_of_image(image_gray, sigma=1):
     gauss_kernel = gauss(sigma)
     gauss_derivative_kernel = gaussddx(sigma)[0]
     
@@ -226,7 +226,7 @@ def first_derivatives_of_image(image_gray, sigma):
     
     return der_x, der_y
 
-def second_derivatives_of_image(image_gray, sigma):
+def second_derivatives_of_image(image_gray, sigma=1):
     der_x, der_y = first_derivatives_of_image(image_gray, sigma)
     der_xx, der_xy = first_derivatives_of_image(der_x, sigma)
     _, der_yy = first_derivatives_of_image(der_y, sigma)
@@ -245,8 +245,9 @@ def case1d():
     museum = imread('images/museum.jpg')
     museum_gray = to_gray(museum)
     
-    der_x, der_y = first_derivatives_of_image(museum_gray)
-    der_xx, der_xy, der_yy = second_derivatives_of_image(museum_gray)
+    der_x, der_y = first_derivatives_of_image(museum_gray, sigma=1)
+    der_xx, der_xy, der_yy = second_derivatives_of_image(museum_gray, 
+                                                         sigma=1)
     mags, angles = gradient_magnitude(museum_gray, 1)
     
     _, axes = plt.subplots(2, 4)
@@ -526,21 +527,29 @@ def hystresis_thresholding(num_labels, label_array, image_gray, tsh_low, tsh_hig
 
 def case2c():
     museum_gray = to_gray(imread('images/museum.jpg'))
-    mags_tsh, _, angles = findedges(museum_gray, sigma=1, theta=0.04,
+    tsh = 0.04
+    mags_tsh, _, angles = findedges(museum_gray, sigma=1, theta=tsh,
                                     normalize=True)
     museum_thinned = non_maxima_suppresion(mags_tsh, angles)
-    output = cv2.connectedComponentsWithStats((museum_thinned * 255).astype(np.uint8)) #connectivity=8
-    #print(output)
-    #print(output[1][:15, :5])
-    museum_hysteresised = hystresis_thresholding(output[0], output[1], 
+    output = cv2.connectedComponentsWithStats(
+        (museum_thinned * 255).astype(np.uint8)) #connectivity=8
+    tsh_low = 0.15
+    tsh_high = 0.30
+    museum_hysteresised = hystresis_thresholding(output[0], 
+                                                 output[1], 
                                                  museum_thinned,
-                                                 tsh_low=0.15,
-                                                 tsh_high=0.30)
-    _, axes = plt.subplots(1, 4)
-    axes[0].imshow(museum_gray, cmap="gray")
-    axes[1].imshow(mags_tsh, cmap="gray")
-    axes[2].imshow(museum_thinned, cmap="gray")
-    axes[3].imshow(museum_hysteresised, cmap="gray")
+                                                 tsh_low=tsh_low,
+                                                 tsh_high=tsh_high)
+    _, axes = plt.subplots(2, 2)
+    axes[0, 0].imshow(museum_gray, cmap="gray")
+    axes[0, 0].set_title('Original')
+    axes[0, 1].imshow(mags_tsh, cmap="gray")
+    axes[0, 1].set_title(f'Thresholded (thr = {tsh})')
+    axes[1, 0].imshow(museum_thinned, cmap="gray")
+    axes[1, 0].set_title(f'Nonmax. supp. (thr = {tsh})')
+    axes[1, 1].imshow(museum_hysteresised, cmap="gray")
+    axes[1, 1].set_title(f"Hysteresis (high = {tsh_high}, " + 
+                         f"low = {tsh_low})")
     plt.show()
 
 
@@ -741,7 +750,7 @@ def draw_lines_for_image(image_gray, axis, image_name=None, sigma=1,
             rho = get_rho_back(max_index_2d[0], acc_r, r, c)
             theta = get_theta_back(max_index_2d[1], acc_c)
             acc_maxima2[max_index_2d] = 0
-            print(f"rho={rho}, theta={theta}")
+            #print(f"rho={rho}, theta={theta}")
             draw_line(rho, theta, r, c, axis, linewidth=1)
 
     if image_name is not None:
@@ -899,14 +908,18 @@ def case3g():
     radius = 47
     eclipse = imread("images/eclipse.jpg")
     eclipse_gray = to_gray(eclipse)
+    #this is the first threshold
+    first_threshold = 0.08
     eclipse_acc = hough_find_lines(500, 700, eclipse_gray, 1,
-                                   0.08, radius = radius)
+                                   first_threshold, radius = radius)
     eclipse_acc_maxima = nonmaxima_suppression_box(eclipse_acc)
-    eclipse_acc_final = normal_thresholding(eclipse_acc_maxima, 0.287)
+    # this is the second threshold
+    second_threshold = 0.287
+    eclipse_acc_final = normal_thresholding(eclipse_acc_maxima,
+                                            second_threshold)
     
     indices_separate = np.where(eclipse_acc_final > 0)
     indices = list(zip(indices_separate[0], indices_separate[1]))
-    print(indices)
     
     _, axes = plt.subplots(1, 2)
     axes[0].imshow(eclipse_acc)
@@ -917,7 +930,7 @@ def case3g():
 
 
 #3h
-def dim_norm_acc(acc, image_r, image_c):
+def dim_norm_acc_simple(acc, image_r, image_c):
     if image_r == image_c: 
         return acc
     
@@ -968,7 +981,13 @@ def distance_between_middle_two_points(point1, point2,
     p2 = arr[2]
     return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
         
-
+# calculates the k and n for the linear function that represents
+# the line at some tho and theta, then calculates all 4 intersections
+# of the enlengthened image edges with the current line and 
+# calculates the Euclidean distance between the middle two points
+# of the 4 intersections and divides the cel of the accumulator
+# array with this calculated distance if the value in the 
+# accumulator array is larger than 0, because 0 / c = 0
 def dim_norm_acc(acc, image_r, image_c):
     acc_r, acc_c, *_ = acc.shape
     r = image_r
@@ -1037,7 +1056,6 @@ def image_to_lines(image, bin_size_rows, bin_size_columns,
     indices = list(zip(indices_separate[0], indices_separate[1]))
 
     axis.imshow(image)
-    image_r, image_c, *_ = image.shape
     acc_r, acc_c, *_ = acc_final.shape
     for rho_on_graph, theta_i in indices:
         rho = get_rho_back(rho_on_graph, acc_r, r, c)
@@ -1072,4 +1090,4 @@ def case3h():
 #case3e()
 #case3f()
 #case3g()
-case3h()
+#case3h()

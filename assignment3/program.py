@@ -1090,4 +1090,4 @@ def case3h():
 #case3e()
 #case3f()
 #case3g()
-#case3h()
+case3h()

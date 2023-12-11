@@ -339,24 +339,31 @@ def retain_only_pts_that_matched(pts1, pts2, cor):
     return pts1_new, pts2_new
 
 def find_matches(I1_gray, I2_gray, tsh=None, sigma=3, kernel_size=31, 
-                 sigma_desc=1, sift=False):
-    I1_harris = whole_Harris(I1_gray, sigma=sigma, kernel_size=kernel_size)
-    I1_y, I1_x = np.where(I1_harris > 0)
-    desc1 = None
-    if sift:
-        desc1 = descriptor_SIFT(I=I1_gray, Y=I1_y, X=I1_x, sigma=sigma_desc)
+                 sigma_desc=1, sift=False, official_sift=False):
+    if official_sift:
+        sift = cv2.SIFT_create()
+        I1_feature_pts_coord, desc1 = sift.detectAndCompute(I1_gray, None)
+        I2_feature_pts_coord, desc2 = sift.detectAndCompute(I2_gray, None)
     else:
-        desc1 = simple_descriptors(I=I1_gray, Y=I1_y, X=I1_x, sigma=sigma_desc)
-    I1_feature_pts_coord = list(zip(I1_x, I1_y))
-    
-    I2_harris = whole_Harris(I2_gray, sigma=sigma, kernel_size=kernel_size)
-    I2_y, I2_x = np.where(I2_harris > 0)
-    desc2 = None
-    if sift:
-        desc2 = descriptor_SIFT(I=I2_gray, Y=I2_y, X=I2_x, sigma=sigma_desc)
-    else:
-        desc2 = simple_descriptors(I=I2_gray, Y=I2_y, X=I2_x, sigma=sigma_desc)
-    I2_feature_pts_coord = list(zip(I2_x, I2_y))
+        I1_harris = whole_Harris(I1_gray, sigma=sigma, kernel_size=kernel_size)
+        I1_y, I1_x = np.where(I1_harris > 0)
+        desc1 = None
+        if sift:
+            desc1 = descriptor_SIFT(I=I1_gray, Y=I1_y, X=I1_x, sigma=sigma_desc)
+            make_rotation_invariant(desc1)
+        else:
+            desc1 = simple_descriptors(I=I1_gray, Y=I1_y, X=I1_x, sigma=sigma_desc)
+        I1_feature_pts_coord = list(zip(I1_x, I1_y))
+        
+        I2_harris = whole_Harris(I2_gray, sigma=sigma, kernel_size=kernel_size)
+        I2_y, I2_x = np.where(I2_harris > 0)
+        desc2 = None
+        if sift:
+            desc2 = descriptor_SIFT(I=I2_gray, Y=I2_y, X=I2_x, sigma=sigma_desc)
+            make_rotation_invariant(desc2)
+        else:
+            desc2 = simple_descriptors(I=I2_gray, Y=I2_y, X=I2_x, sigma=sigma_desc)
+        I2_feature_pts_coord = list(zip(I2_x, I2_y))
     
     correspondences = None
     if tsh == None:
@@ -512,7 +519,7 @@ def descriptor_SIFT(I, Y, X, n_bins = 8, radius = 40, sigma = 2):
         for i in range(miny, maxy):
             for j in range(minx, maxx):
                 a[*coord_to_grid_index(j, minx, w, i, miny, h), 
-                  angle_to_index(ang[i, j])] += mag[i, j] * w_use[j - minx, i - miny]
+                  angle_to_index(ang[i, j])] += mag[i, j] * w_use[i - miny, j - minx]
 
         a = a.reshape(-1)
         a /= np.sum(a)
@@ -540,6 +547,20 @@ def case2d():
     display_matches(graf_a, pts1, graf_b, pts2)
 
 
+# 2e
+def case2e():
+    sift = cv2.SIFT_create()
+    cap = cv2.VideoCapture("data/my_video.mp4")
+    ret, frame = cap.read()
+    while(1):
+        ret, frame = cap.read()
+        keypoints, desc1 = sift.detectAndCompute(frame, None)
+        output_frame = cv2.drawKeypoints(frame, keypoints, 0, (255, 0, 0), 
+                                     flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS) 
+        cv2.imshow('frame', output_frame)
+        if cv2.waitKey(1) & 0xFF == ord('q') or ret==False:
+            cap.release()
+            cv2.destroyAllWindows()
 # 3
 """
 p1 is for scaling, p2 is for rotating and p3 and p4 are for translating.
@@ -568,9 +589,9 @@ def constructA(pts1, pts2):
         yr = p1[1]
         xt = p2[0]
         yt = p2[1]
-        A.append([xr, yr, 1, 0, 0, 0, -xt*xr, -xt*yr, -xt])
-        A.append([0, 0, 0, xr, yr, 1, -yt*xr, -yt*yr, -yt])
-    return A
+        A.append(np.array([xr, yr, 1, 0, 0, 0, -xt*xr, -xt*yr, -xt]))
+        A.append(np.array([0, 0, 0, xr, yr, 1, -yt*xr, -yt*yr, -yt]))
+    return np.array(A)
 
 def estimate_homography(pts1, pts2):
     A = constructA(pts1, pts2)
@@ -579,7 +600,8 @@ def estimate_homography(pts1, pts2):
     h = V[:,-1] / V[-1,-1]
     return h.reshape(3, 3)
 
-def transform_image_plane(I1_path, I2_path, name1, name2, pts_path):
+def transform_image_plane(I1_path, I2_path, name1, name2, pts_path, 
+                          my_warp=False):
     I1 = imread(I1_path)
     I2 = imread(I2_path)
     I1_gray = to_gray(I1)
@@ -592,7 +614,12 @@ def transform_image_plane(I1_path, I2_path, name1, name2, pts_path):
     H = estimate_homography(pts1, pts2)
     print(H)
     
-    I1_changed = cv2.warpPerspective(I1, H, (I2.shape[1], I2.shape[0]))
+    I1_changed = None
+    if my_warp:
+        # I used the inverse of matrix H
+        I1_changed = my_warp_perspective(I1, np.linalg.inv(H), (I2.shape[1], I2.shape[0]))
+    else:
+        I1_changed = cv2.warpPerspective(I1, H, (I2.shape[1], I2.shape[0]))
     _, axes = plt.subplots(1, 3)
     axes[0].imshow(I1)
     if name1 is not None:
@@ -625,12 +652,17 @@ def euclidean(h1, h2):
     value_sumed = np.sum(square)
     return np.sqrt(value_sumed)
 
-def RANSAC(path1, path2,  name1=None, name2=None, sigma=3, kernel_size=31, k=10, tsh=10):
+def RANSAC(path1, path2,  name1=None, name2=None, sigma=3, sift_tsh=None, 
+           kernel_size=31, k=10, ransac_tsh=10, sift=True):
     I1 = imread(path1)
     I2 = imread(path2)
     I1_gray = to_gray(I1)
     I2_gray = to_gray(I2)
-    pts1, pts2 = find_matches(I1_gray, I2_gray, sift=True, tsh=0.5)
+    pts1, pts2 = find_matches(I1_gray, I2_gray, 
+                              tsh=sift_tsh,
+                              sigma=sigma, 
+                              kernel_size=kernel_size,
+                              sift=sift)
     display_matches(I1, pts1, I2, pts2)
     print(pts1)
     print()
@@ -661,7 +693,7 @@ def RANSAC(path1, path2,  name1=None, name2=None, sigma=3, kernel_size=31, k=10,
             p1_arr_transf = np.array([p1_transf_homog[0], p1_transf_homog[1]])
             p2_arr = np.array([p2[0], p2[1]])
             dist = euclidean(p1_arr_transf, p2_arr)
-            if dist < tsh:
+            if dist < ransac_tsh:
                 inliers += 1
                 
         # 4. maximize the number of inliers and remember the correspondences
@@ -690,8 +722,33 @@ def RANSAC(path1, path2,  name1=None, name2=None, sigma=3, kernel_size=31, k=10,
 
 def case3b():
     RANSAC("data/graf/graf_a.jpg", "data/graf/graf_b.jpg", 
-           name1="graf_a", name2="graf_b", 
-           sigma=1, kernel_size=5, k=1000, tsh=10)
+           name1="graf_a", name2="graf_b", k=1000,
+           ransac_tsh=5, sift_tsh=0.4)
+
+    RANSAC("data/newyork/newyork_a.jpg", "data/newyork/newyork_b.jpg", 
+           name1="newyork_a", name2="newyork_b", sigma=1, 
+           k=1000, kernel_size=7, sift=False)
+
+# 3d
+def my_warp_perspective(I, H, shape):
+    changed_image = np.zeros((shape[1], shape[0], 3))
+    for y in range(shape[0]):
+        for x in range(shape[1]):
+            divider = (H[2, 0]*x + H[2, 1]*y + 1)
+            changed_x = int((H[0, 0]*x + H[0, 1]*y + H[0, 2]) / divider)
+            changed_y = int((H[1, 0]*x + H[1, 1]*y + H[1, 2]) / divider)
+            if changed_y < I.shape[0] and changed_y > 0 and \
+                changed_x < I.shape[1] and changed_x > 0:
+                changed_image[y, x] = I[changed_y, changed_x]
+    return changed_image
+
+def case3d():
+    transform_image_plane("data/newyork/newyork_a.jpg", 
+                        "data/newyork/newyork_b.jpg",
+                        "newyork_a",
+                        "newyork_b",
+                        "data/newyork/newyork.txt", 
+                        my_warp=True)
 
 
 
@@ -703,9 +760,11 @@ def case3b():
 #case2b()
 #case2c()
 #case2d()
+case2e()
 
 #case3a()
 #case3b()
+#case3d()
 
 
 

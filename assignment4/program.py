@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 from PIL import Image
+import random
 
 
 '''because np.floor(0.03 / 0.05) = 5, which is wrong, because 0.03 / 0.05
@@ -337,15 +338,24 @@ def retain_only_pts_that_matched(pts1, pts2, cor):
         pts2_new.append(pts2[j])
     return pts1_new, pts2_new
 
-def find_matches(I1_gray, I2_gray, tsh=None):
-    I1_harris = whole_Harris(I1_gray, sigma=3, kernel_size = 31)
+def find_matches(I1_gray, I2_gray, tsh=None, sigma=3, kernel_size=31, 
+                 sigma_desc=1, sift=False):
+    I1_harris = whole_Harris(I1_gray, sigma=sigma, kernel_size=kernel_size)
     I1_y, I1_x = np.where(I1_harris > 0)
-    desc1 = simple_descriptors(I=I1_gray, Y=I1_y, X=I1_x, sigma=1)
+    desc1 = None
+    if sift:
+        desc1 = descriptor_SIFT(I=I1_gray, Y=I1_y, X=I1_x, sigma=sigma_desc)
+    else:
+        desc1 = simple_descriptors(I=I1_gray, Y=I1_y, X=I1_x, sigma=sigma_desc)
     I1_feature_pts_coord = list(zip(I1_x, I1_y))
     
-    I2_harris = whole_Harris(I2_gray, sigma=3, kernel_size = 31)
+    I2_harris = whole_Harris(I2_gray, sigma=sigma, kernel_size=kernel_size)
     I2_y, I2_x = np.where(I2_harris > 0)
-    desc2 = simple_descriptors(I=I2_gray, Y=I2_y, X=I2_x, sigma=1)
+    desc2 = None
+    if sift:
+        desc2 = descriptor_SIFT(I=I2_gray, Y=I2_y, X=I2_x, sigma=sigma_desc)
+    else:
+        desc2 = simple_descriptors(I=I2_gray, Y=I2_y, X=I2_x, sigma=sigma_desc)
     I2_feature_pts_coord = list(zip(I2_x, I2_y))
     
     correspondences = None
@@ -361,8 +371,6 @@ def find_matches(I1_gray, I2_gray, tsh=None):
         correspondences = retain_only_symmetric_correspondences2(
                             correspondences_from_1_to_2, 
                             correspondences_from_2_to_1)
-    print(correspondences)
-    print()
 
     I1_feature_pts_coord, I2_feature_pts_coord = retain_only_pts_that_matched(
                                                         I1_feature_pts_coord,
@@ -370,17 +378,19 @@ def find_matches(I1_gray, I2_gray, tsh=None):
                                                         correspondences)
     return I1_feature_pts_coord, I2_feature_pts_coord
 
+def find_and_display_matches(I1_path, I2_path, tsh=None):
+    I1 = imread(I1_path)
+    I2 = imread(I2_path)
+    I1_gray = to_gray(I1)
+    I2_gray = to_gray(I2)
+
+    I1_pts, I2_pts = find_matches(I1_gray, I2_gray, tsh=tsh)
+    display_matches(I1, I1_pts,
+                    I2, I2_pts)
+
 def case2b():
-    graf_a_gray = to_gray(imread("data/graf/graf_a_small.jpg"))
-
-    graf_b_gray = to_gray(imread("data/graf/graf_b_small.jpg"))
-
-    graf_a_feature_pts_coord, graf_b_feature_pts_coord = find_matches(
-                                                            graf_a_gray, 
-                                                            graf_b_gray)
-    display_matches(graf_a_gray, graf_a_feature_pts_coord,
-                    graf_b_gray, graf_b_feature_pts_coord)
-
+    find_and_display_matches("data/graf/graf_a_small.jpg", 
+                             "data/graf/graf_b_small.jpg")
 
 # 2c
 """
@@ -426,20 +436,288 @@ def find_correspondences2(desc1, desc2, tsh):
 
 
 def case2c():
-    graf_a_gray = to_gray(imread("data/graf/graf_a_small.jpg"))
+    find_and_display_matches("data/graf/graf_a_small.jpg", 
+                             "data/graf/graf_b_small.jpg",
+                             tsh=0.9)
 
-    graf_b_gray = to_gray(imread("data/graf/graf_b_small.jpg"))
+# 2d
+def doG(I, sigma=1):
+    laplace_piramid = []
+    g = gauss(sigma)
+    for _ in range(4):
+        for _ in range(4):
+            Ib = convolve(I, g, g.T)
+            #Is = Ib[::2, ::2]
+            laplace_piramid.append(Ib - I)
+            I = Ib
+        Is = Ib[::2, ::2]
+        I = Is
+    return laplace_piramid
+        
+def angle_to_index(angle):
+    angle = (angle + (9*np.pi)/8) % (2 * np.pi)
+    # 0 is left, 1 is left down and so on around the circle
+    return (np.floor(angle / (np.pi / 4))).astype(int)
 
-    graf_a_feature_pts_coord, graf_b_feature_pts_coord = find_matches(
-                                                            graf_a_gray, 
-                                                            graf_b_gray, 
-                                                            tsh=0.9)
-    display_matches(graf_a_gray, graf_a_feature_pts_coord,
-                    graf_b_gray, graf_b_feature_pts_coord)
+def coord_to_grid_index(x, minx, w, y, miny, h):
+    return int(math.floor((x - minx)/w)), int(math.floor((y - miny)/h))
+
+
+def descriptor_SIFT(I, Y, X, n_bins = 8, radius = 40, sigma = 2):
+    """
+    Computes descriptors for locations given in X and Y.
+
+    I: Image in grayscale.
+    Y: list of Y coordinates of locations. (Y: index of row from top to bottom)
+    X: list of X coordinates of locations. (X: index of column from left to right)
+
+    Returns: tensor of shape (len(X), 4^2, n_bins^2), so for each point a feature of 
+    length 16 * n_bins.
+    """
+    assert np.max(I) <= 1, "Image needs to be in range [0, 1]"
+    assert I.dtype == np.float64, "Image needs to be in np.float64"
+    assert radius % 4 == 0, "Radius needs to be a multiple of 4, so the split into \
+    a grid of 4x4 is nice and simple."
+
+    # if radius = 40, then 2*radius = 80
+    # 6sigma + 1 = 2*radius => sigma = ((2*radius)-1)/6
+    w = gauss(1/3 * radius) # made a little bigger than it needs to be just in case
+    w2d = np.outer(w, w)
+    height, width = w2d.shape
+    w_use = w2d[int(height/2)-radius:int(height/2)+radius, 
+                int(width/2)-radius:int(width/2)+radius]
+    
+    g = gauss(sigma)
+    d = gaussdx(sigma)
+
+    Ix = convolve(I, g.T, d)
+    Iy = convolve(I, g, d.T)
+
+    mag = np.sqrt(Ix ** 2 + Iy ** 2)
+    mag = np.floor(mag * ((n_bins - 1) / np.max(mag)))
+
+    ang = np.arctan2(Iy, Ix)
+    ang = np.floor(ang * ((n_bins - 1) / np.max(ang)))
+
+    desc = []
+    for y, x in zip(Y, X):
+        miny = max(y - radius, 0)
+        maxy = min(y + radius, I.shape[0])
+        minx = max(x - radius, 0)
+        maxx = min(x + radius, I.shape[1])
+        w = (maxx - minx) / 4
+        h = (maxy - miny) / 4
+        
+        a = np.zeros((4, 4, n_bins))
+        for i in range(miny, maxy):
+            for j in range(minx, maxx):
+                a[*coord_to_grid_index(j, minx, w, i, miny, h), 
+                  angle_to_index(ang[i, j])] += mag[i, j] * w_use[j - minx, i - miny]
+
+        a = a.reshape(-1)
+        a /= np.sum(a)
+
+        desc.append(a)
+
+    return np.array(desc)
+
+def make_rotation_invariant(histograms):
+    for i, histogram in enumerate(histograms):
+        max = -math.inf
+        max_index = None
+        for j, val in enumerate(histogram):
+            if val > max:
+                max = val
+                max_index = j
+        histograms[i] = np.concatenate([histogram[max_index:],histogram[:max_index]])
+
+def case2d():
+    graf_a = imread("data/graf/graf_a.jpg")
+    graf_a_gray = to_gray(graf_a)
+    graf_b = imread("data/graf/graf_b.jpg")
+    graf_b_gray = to_gray(graf_b)
+    pts1, pts2 = find_matches(graf_a_gray, graf_b_gray, sift=True, tsh=0.5)
+    display_matches(graf_a, pts1, graf_b, pts2)
+
+
+# 3
+"""
+p1 is for scaling, p2 is for rotating and p3 and p4 are for translating.
+
+1. Define the set of corresponding points.
+2. Define the linear transformation.
+3. Define the per-point error and combine all results into a vector e.
+4. Rewrite the error into a form e = Ap - b
+5. Solve by pseudoinverse p = (A.T * A)^(-1) * A.T * b or 
+p = (A.T * W * A)^(-1) * A.T * W * b, if you also have weights for errors
+"""
+
+# 3a
+def file_to_pts(arr2d):
+    pts1 = []
+    pts2 = []
+    for x1, y1, x2, y2 in arr2d:
+        pts1.append((x1, y1))
+        pts2.append((x2, y2))
+    return pts1, pts2
+
+def constructA(pts1, pts2):
+    A = []
+    for p1, p2 in zip(pts1, pts2):
+        xr = p1[0]
+        yr = p1[1]
+        xt = p2[0]
+        yt = p2[1]
+        A.append([xr, yr, 1, 0, 0, 0, -xt*xr, -xt*yr, -xt])
+        A.append([0, 0, 0, xr, yr, 1, -yt*xr, -yt*yr, -yt])
+    return A
+
+def estimate_homography(pts1, pts2):
+    A = constructA(pts1, pts2)
+    _, _, VT = np.linalg.svd(A)
+    V = VT.T
+    h = V[:,-1] / V[-1,-1]
+    return h.reshape(3, 3)
+
+def transform_image_plane(I1_path, I2_path, name1, name2, pts_path):
+    I1 = imread(I1_path)
+    I2 = imread(I2_path)
+    I1_gray = to_gray(I1)
+    I2_gray = to_gray(I2)
+    
+    pts = np.loadtxt(pts_path)
+    pts1, pts2 = file_to_pts(pts)
+    
+    display_matches(I1, pts1, I2, pts2)
+    H = estimate_homography(pts1, pts2)
+    print(H)
+    
+    I1_changed = cv2.warpPerspective(I1, H, (I2.shape[1], I2.shape[0]))
+    _, axes = plt.subplots(1, 3)
+    axes[0].imshow(I1)
+    if name1 is not None:
+        axes[0].set_title(name1)
+    axes[1].imshow(I1_changed)
+    if name1 is not None:
+        axes[1].set_title(f"{name1}_changed")
+    axes[2].imshow(I2)
+    if name2 is not None:
+        axes[2].set_title(name2)
+    plt.show()
+
+def case3a():
+    transform_image_plane("data/newyork/newyork_a.jpg", 
+                          "data/newyork/newyork_b.jpg",
+                          "newyork_a",
+                          "newyork_b",
+                          "data/newyork/newyork.txt")
+    transform_image_plane("data/graf/graf_a.jpg", 
+                          "data/graf/graf_b.jpg", 
+                          "graf_a",
+                          "graf_b",
+                          "data/graf/graf.txt")
+    
+
+# 3b
+def euclidean(h1, h2):
+    diff = h1 - h2
+    square = diff * diff
+    value_sumed = np.sum(square)
+    return np.sqrt(value_sumed)
+
+def RANSAC(path1, path2,  name1=None, name2=None, sigma=3, kernel_size=31, k=10, tsh=10):
+    I1 = imread(path1)
+    I2 = imread(path2)
+    I1_gray = to_gray(I1)
+    I2_gray = to_gray(I2)
+    pts1, pts2 = find_matches(I1_gray, I2_gray, sift=True, tsh=0.5)
+    display_matches(I1, pts1, I2, pts2)
+    print(pts1)
+    print()
+    print(pts2)
+    print()
+    num_pts = len(pts1)
+    
+    # RANSAC loop
+    best_H = None
+    max_outliers = 0
+    for _ in range(k):
+        # 1. select 4 random correspondences
+        pts1_selected = []
+        pts2_selected = []
+        for _ in range(4):
+            idx = random.randint(0, num_pts - 1)
+            pts1_selected.append(pts1[idx])
+            pts2_selected.append(pts2[idx])
+            
+        # 2. estimate homography on those 4 random correspondences
+        H = estimate_homography(pts1_selected, pts2_selected)
+        
+        # 3. project all other correspondences and check the number of inliers
+        inliers = 0
+        for p1, p2 in zip(pts1, pts2):
+            p1_arr = np.array([p1[0], p2[1], 1])
+            p1_transf_homog = np.matmul(H, p1_arr)
+            p1_arr_transf = np.array([p1_transf_homog[0], p1_transf_homog[1]])
+            p2_arr = np.array([p2[0], p2[1]])
+            dist = euclidean(p1_arr_transf, p2_arr)
+            if dist < tsh:
+                inliers += 1
+                
+        # 4. maximize the number of inliers and remember the correspondences
+        # when the number of inliers was maximal
+        if inliers > max_outliers:
+            max_outliers = inliers
+            best_H = H
+
+    print(best_H)
+    print(max_outliers)
+
+    # display the result of the ransac loop
+    I1_changed = cv2.warpPerspective(I1, best_H, (I2.shape[1], I2.shape[0]))
+    _, axes = plt.subplots(1, 3)
+    axes[0].imshow(I1)
+    if name1 is not None:
+        axes[0].set_title(name1)
+    axes[1].imshow(I1_changed)
+    if name1 is not None:
+        axes[1].set_title(f"{name1}_changed")
+    axes[2].imshow(I2)
+    if name2 is not None:
+        axes[2].set_title(name2)
+    plt.show()
+
+
+def case3b():
+    RANSAC("data/graf/graf_a.jpg", "data/graf/graf_b.jpg", 
+           name1="graf_a", name2="graf_b", 
+           sigma=1, kernel_size=5, k=1000, tsh=10)
+
+
+
 
 #case1a()
 #case1b()
 
 #case2a()
-case2b()
-case2c()
+#case2b()
+#case2c()
+#case2d()
+
+#case3a()
+#case3b()
+
+
+
+""" lena = to_gray(imread("../assignment2/images/lena.png"))
+laplace_piramid = doG(lena, sigma=3)
+h = 4
+w = 4
+_, axes = plt.subplots(h, w)
+for i in range(h):
+    for j in range(w):
+        index = i * w + j
+        if index < len(laplace_piramid):
+            axes[i, j].imshow(laplace_piramid[index], cmap="gray")
+plt.show()
+ """

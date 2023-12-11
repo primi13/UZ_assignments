@@ -338,32 +338,30 @@ def retain_only_pts_that_matched(pts1, pts2, cor):
         pts2_new.append(pts2[j])
     return pts1_new, pts2_new
 
-def find_matches(I1_gray, I2_gray, tsh=None, sigma=3, kernel_size=31, 
-                 sigma_desc=1, sift=False, official_sift=False):
-    if official_sift:
-        sift = cv2.SIFT_create()
-        I1_feature_pts_coord, desc1 = sift.detectAndCompute(I1_gray, None)
-        I2_feature_pts_coord, desc2 = sift.detectAndCompute(I2_gray, None)
+def find_matches(I1, I2, tsh=None, sigma=3, kernel_size=31, 
+                 sigma_desc=1, sift=False):
+    I1_gray = to_gray(I1)
+    I2_gray = to_gray(I2)
+
+    I1_harris = whole_Harris(I1_gray, sigma=sigma, kernel_size=kernel_size)
+    I1_y, I1_x = np.where(I1_harris > 0)
+    desc1 = None
+    if sift:
+        desc1 = descriptor_SIFT(I=I1_gray, Y=I1_y, X=I1_x, sigma=sigma_desc)
+        make_rotation_invariant(desc1)
     else:
-        I1_harris = whole_Harris(I1_gray, sigma=sigma, kernel_size=kernel_size)
-        I1_y, I1_x = np.where(I1_harris > 0)
-        desc1 = None
-        if sift:
-            desc1 = descriptor_SIFT(I=I1_gray, Y=I1_y, X=I1_x, sigma=sigma_desc)
-            make_rotation_invariant(desc1)
-        else:
-            desc1 = simple_descriptors(I=I1_gray, Y=I1_y, X=I1_x, sigma=sigma_desc)
-        I1_feature_pts_coord = list(zip(I1_x, I1_y))
-        
-        I2_harris = whole_Harris(I2_gray, sigma=sigma, kernel_size=kernel_size)
-        I2_y, I2_x = np.where(I2_harris > 0)
-        desc2 = None
-        if sift:
-            desc2 = descriptor_SIFT(I=I2_gray, Y=I2_y, X=I2_x, sigma=sigma_desc)
-            make_rotation_invariant(desc2)
-        else:
-            desc2 = simple_descriptors(I=I2_gray, Y=I2_y, X=I2_x, sigma=sigma_desc)
-        I2_feature_pts_coord = list(zip(I2_x, I2_y))
+        desc1 = simple_descriptors(I=I1_gray, Y=I1_y, X=I1_x, sigma=sigma_desc)
+    I1_feature_pts_coord = list(zip(I1_x, I1_y))
+    
+    I2_harris = whole_Harris(I2_gray, sigma=sigma, kernel_size=kernel_size)
+    I2_y, I2_x = np.where(I2_harris > 0)
+    desc2 = None
+    if sift:
+        desc2 = descriptor_SIFT(I=I2_gray, Y=I2_y, X=I2_x, sigma=sigma_desc)
+        make_rotation_invariant(desc2)
+    else:
+        desc2 = simple_descriptors(I=I2_gray, Y=I2_y, X=I2_x, sigma=sigma_desc)
+    I2_feature_pts_coord = list(zip(I2_x, I2_y))
     
     correspondences = None
     if tsh == None:
@@ -388,10 +386,8 @@ def find_matches(I1_gray, I2_gray, tsh=None, sigma=3, kernel_size=31,
 def find_and_display_matches(I1_path, I2_path, tsh=None):
     I1 = imread(I1_path)
     I2 = imread(I2_path)
-    I1_gray = to_gray(I1)
-    I2_gray = to_gray(I2)
 
-    I1_pts, I2_pts = find_matches(I1_gray, I2_gray, tsh=tsh)
+    I1_pts, I2_pts = find_matches(I1, I2, tsh=tsh)
     display_matches(I1, I1_pts,
                     I2, I2_pts)
 
@@ -540,10 +536,8 @@ def make_rotation_invariant(histograms):
 
 def case2d():
     graf_a = imread("data/graf/graf_a.jpg")
-    graf_a_gray = to_gray(graf_a)
     graf_b = imread("data/graf/graf_b.jpg")
-    graf_b_gray = to_gray(graf_b)
-    pts1, pts2 = find_matches(graf_a_gray, graf_b_gray, sift=True, tsh=0.5)
+    pts1, pts2 = find_matches(graf_a, graf_b, sift=True, tsh=0.5)
     display_matches(graf_a, pts1, graf_b, pts2)
 
 
@@ -554,13 +548,17 @@ def case2e():
     ret, frame = cap.read()
     while(1):
         ret, frame = cap.read()
-        keypoints, desc1 = sift.detectAndCompute(frame, None)
-        output_frame = cv2.drawKeypoints(frame, keypoints, 0, (255, 0, 0), 
+        keypoints = sift.detectAndCompute(frame, None)
+        output_frame = cv2.drawKeypoints(frame, keypoints, 0, (0, 0, 255), 
                                      flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS) 
         cv2.imshow('frame', output_frame)
         if cv2.waitKey(1) & 0xFF == ord('q') or ret==False:
             cap.release()
             cv2.destroyAllWindows()
+            break
+        cv2.imshow('frame', output_frame)
+        
+        
 # 3
 """
 p1 is for scaling, p2 is for rotating and p3 and p4 are for translating.
@@ -653,12 +651,10 @@ def euclidean(h1, h2):
     return np.sqrt(value_sumed)
 
 def RANSAC(path1, path2,  name1=None, name2=None, sigma=3, sift_tsh=None, 
-           kernel_size=31, k=10, ransac_tsh=10, sift=True):
+           kernel_size=31, k=10, ransac_tsh=10, sift=False):
     I1 = imread(path1)
     I2 = imread(path2)
-    I1_gray = to_gray(I1)
-    I2_gray = to_gray(I2)
-    pts1, pts2 = find_matches(I1_gray, I2_gray, 
+    pts1, pts2 = find_matches(I1, I2, 
                               tsh=sift_tsh,
                               sigma=sigma, 
                               kernel_size=kernel_size,
@@ -721,13 +717,13 @@ def RANSAC(path1, path2,  name1=None, name2=None, sigma=3, sift_tsh=None,
 
 
 def case3b():
-    RANSAC("data/graf/graf_a.jpg", "data/graf/graf_b.jpg", 
-           name1="graf_a", name2="graf_b", k=1000,
-           ransac_tsh=5, sift_tsh=0.4)
+    #RANSAC("data/graf/graf_a.jpg", "data/graf/graf_b.jpg", 
+    #       name1="graf_a", name2="graf_b", k=1000,
+    #       ransac_tsh=5, sift_tsh=0.4, sift=True, kernel_size=51)
 
     RANSAC("data/newyork/newyork_a.jpg", "data/newyork/newyork_b.jpg", 
-           name1="newyork_a", name2="newyork_b", sigma=1, 
-           k=1000, kernel_size=7, sift=False)
+           name1="newyork_a", name2="newyork_b", sigma=1, ransac_tsh=5, 
+           k=1000, kernel_size=11)
 
 # 3d
 def my_warp_perspective(I, H, shape):
@@ -760,10 +756,10 @@ def case3d():
 #case2b()
 #case2c()
 #case2d()
-case2e()
+#case2e()
 
 #case3a()
-#case3b()
+case3b()
 #case3d()
 
 

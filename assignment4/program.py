@@ -1,5 +1,4 @@
 from a4_utils import *
-import os
 import math
 import numpy as np
 import cv2
@@ -83,7 +82,7 @@ def nonmaxima_suppression_box(acc_arr):
 
 # 1a
     """
-    Blobs are detected (Tak kot krogle luknje in vogali). 
+    Blobs are detected (Tak kot okrogle luknje in vogali). 
     With a larger sigma larger blobs are detected.
     For example a Laplacian function looks like a blob.
     """
@@ -312,8 +311,8 @@ def case2a():
     graf_b_feature_points_coordinates = align_feature_points_coordinates(graf_b_feature_points_coordinates, 
                                                                          correspondences)
     
-    display_matches(graf_a_gray, graf_a_feature_points_coordinates, 
-                    graf_b_gray, graf_b_feature_points_coordinates)
+    display_matches(graf_a_small, graf_a_feature_points_coordinates, 
+                    graf_b_small, graf_b_feature_points_coordinates)
     
     
 # 2b
@@ -403,7 +402,7 @@ The ration of these two distances will be low for distinctive key-points and hig
 non-distinctive ones. Threshold approximately 0.8 gives good results with SIFT.
 
 It put threshold on 0.9 and it works really good, almost all pairs of
-feature points are perfects matches.
+feature points are perfect matches.
 """
 def retain_only_symmetric_correspondences2(cor1, cor2):
     correspondences = []
@@ -546,16 +545,20 @@ def case2e():
     sift = cv2.SIFT_create()
     cap = cv2.VideoCapture("data/my_video.mp4")
     ret, frame = cap.read()
-    while(1):
+    
+    size = (int(cap.get(3)), int(cap.get(4)))
+    result = cv2.VideoWriter("data/result.mp4", cv2.VideoWriter_fourcc(*"mp4v"), 30, size)
+    while cap.isOpened():
         ret, frame = cap.read()
-        keypoints = sift.detectAndCompute(frame, None)
-        output_frame = cv2.drawKeypoints(frame, keypoints, 0, (0, 0, 255), 
-                                     flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS) 
-        cv2.imshow('frame', output_frame)
         if cv2.waitKey(1) & 0xFF == ord('q') or ret==False:
             cap.release()
             cv2.destroyAllWindows()
             break
+
+        keypoints, _ = sift.detectAndCompute(frame, None)
+        output_frame = cv2.drawKeypoints(frame, keypoints, 0, (0, 0, 255), 
+                                     flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS) 
+        result.write(output_frame)
         cv2.imshow('frame', output_frame)
         
         
@@ -602,8 +605,6 @@ def transform_image_plane(I1_path, I2_path, name1, name2, pts_path,
                           my_warp=False):
     I1 = imread(I1_path)
     I2 = imread(I2_path)
-    I1_gray = to_gray(I1)
-    I2_gray = to_gray(I2)
     
     pts = np.loadtxt(pts_path)
     pts1, pts2 = file_to_pts(pts)
@@ -732,7 +733,7 @@ def my_warp_perspective(I, H, shape):
         for x in range(shape[1]):
             divider = (H[2, 0]*x + H[2, 1]*y + 1)
             changed_x = int((H[0, 0]*x + H[0, 1]*y + H[0, 2]) / divider)
-            changed_y = int((H[1, 0]*x + H[1, 1]*y + H[1, 2]) / divider)
+            changed_y = int((H[1, 0]*x + H[1, 1]*y + H[1, 2]) / divider)            
             if changed_y < I.shape[0] and changed_y > 0 and \
                 changed_x < I.shape[1] and changed_x > 0:
                 changed_image[y, x] = I[changed_y, changed_x]
@@ -759,8 +760,8 @@ def case3d():
 #case2e()
 
 #case3a()
-case3b()
-#case3d()
+#case3b()
+case3d()
 
 
 

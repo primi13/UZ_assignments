@@ -1,9 +1,11 @@
 from a5_utils import *
+from a4_utils import *
 import math
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 from PIL import Image
+import random
 
 
 def imread(path):
@@ -298,20 +300,217 @@ def case2b():
     
 
 # 2c
+def reprojection_error(F, pt1, pt2):
+    pt1arr = np.array([pt1[0], pt1[1], 1])
+    l = np.dot(F, pt1arr)
+    a, b, c = l
+    x0, y0 = pt2
+    dist1 = abs(a*x0 + b*y0 + c) / np.sqrt(a**2 + b**2)
+
+    pt2arr = np.array([pt2[0], pt2[1], 1])
+    l = np.dot(F.T, pt2arr)
+    a, b, c = l
+    x0, y0 = pt1
+    dist2 = abs(a*x0 + b*y0 + c) / np.sqrt(a**2 + b**2)
+    
+    return (dist1 + dist2) / 2
 
 
+def case2c():
+    dir = "data/epipolar/"
+    pts = np.loadtxt(dir + "house_points.txt")
+    pts1, pts2 = file_to_pts(pts)
+    F = fundamental_matrix(pts1, pts2)
+
+    # (1)
+    p1 = [85, 233]
+    p2 = [67, 219]
+    print("(1):")
+    print(reprojection_error(F, p1, p2))
+    print()
+    
+    print("(2):")
+    sum = 0
+    count = 0
+    for pt1, pt2 in zip(pts1, pts2):
+        sum += reprojection_error(F, pt1, pt2)
+        count += 1
+    print(sum / count)
+    print()
 
 
+# 2d
+# this is hellinger distance between two histograms
+def hellinger(h1, h2):
+    sqrt1 = np.sqrt(h1)
+    sqrt2 = np.sqrt(h2)
+    diff_sqrt = sqrt1 - sqrt2
+    square = diff_sqrt * diff_sqrt
+    value_sumed = np.sum(square)
+    value_half = value_sumed / 2
+    return np.sqrt(value_half)
+
+def retain_only_symmetric_correspondences2(cor1, cor2):
+    correspondences = []
+    len1 = len(cor1)
+    len2 = len(cor2)
+    for i in range(len1):
+        pt_in_right_image = cor1[i][1]
+        for j in range(len2):
+            if cor2[j][0] == pt_in_right_image and cor2[j][1] == cor1[i][0]:
+                correspondences.append(cor1[i])
+    return correspondences
+
+def find_correspondences2(desc1, desc2, tsh):
+    correspondences = []
+    len1 = desc1.shape[0]
+    len2 = desc2.shape[0]
+    for i in range(len1):
+        min = np.inf
+        second_min = min
+        min_index = None
+        for j in range(len2):
+            dist = hellinger(desc1[i], desc2[j])
+            if dist < min:
+                second_min = min
+                min = dist
+                min_index = j
+            elif dist < second_min:
+                second_min = dist
+        if min / second_min < tsh:
+            correspondences.append((i, min_index))
+    return correspondences
+
+def align_feature_points_coordinates(arr, corres):
+    aligned_arr = []
+    for _, j in corres:
+        aligned_arr.append(arr[j])
+    return aligned_arr
+
+def RANSAC(pts1, pts2, k=300, ransac_tsh=1):
+    num_pts = len(pts1)
+    
+    # RANSAC loop
+    best_F = None
+    max_inliers = 0
+    best_inliers  = []
+    for _ in range(k):
+        # 1. select 10 random correspondences
+        pts1_copy = np.copy(pts1)
+        pts2_copy = np.copy(pts2)
+        pts1_selected = []
+        pts2_selected = []
+        for _ in range(10):
+            idx = random.randint(0, pts1_copy.shape[0] - 1)
+            pts1_selected.append(pts1[idx])
+            pts2_selected.append(pts2[idx])
+            pts1_copy = np.delete(pts1_copy, idx, 0)
+            pts2_copy = np.delete(pts2_copy, idx, 0)
+        pts1_selected = np.array(pts1_selected)
+        pts2_selected = np.array(pts2_selected)
+        
+            
+        # 2. estimate homography on those 10 random correspondences
+        F = fundamental_matrix(pts1_selected, pts2_selected)
+        
+        # 3. project all other correspondences and check the number of inliers
+        num_inliers = 0
+        inliers = []
+        for p1, p2 in zip(pts1, pts2):
+            dist = reprojection_error(F, p1, p2)
+            if dist < ransac_tsh:
+                num_inliers += 1
+                inliers.append((p1, p2))
+                
+                
+        # 4. maximize the number of inliers and remember the correspondences
+        # when the number of inliers was maximal
+        if num_inliers > max_inliers:
+            max_inliers = num_inliers
+            best_F = F
+            best_inliers = inliers
+
+    print("Number of correspondences:", num_pts)
+    print("Best F: ", best_F)
+    print("Maximum number of inliers: ", max_inliers)
+    
+    return best_F, np.array(best_inliers)
+
+def display_epilines_and_points(I1, pts1, I2, pts2, F):
+    h1, w1, *_ = I1.shape
+    h2, w2, *_ = I2.shape
+    
+    pts1x, pts1y = pts_to_coord(pts1)
+    pts2x, pts2y = pts_to_coord(pts2)
+
+    _, axes = plt.subplots(1, 2)
+    axes[0].imshow(I1)
+    axes[0].scatter(pts1x, pts1y, color="r")
+    draw_all_epilines(F.T, pts2, h1, w1, axes[0])
+    axes[1].imshow(I2)
+    axes[1].scatter(pts2x, pts2y, color="r")
+    draw_all_epilines(F, pts1, h2, w2, axes[1])
+    plt.show()
 
 
+def case2d():
+    dir = "data/desk/"
+    I1 = cv2.imread(dir + "DSC02638.jpg")
+    I2 = cv2.imread(dir + "DSC02639.jpg")
+    I1_gray= cv2.cvtColor(I1,cv2.COLOR_BGR2GRAY)
+    I2_gray= cv2.cvtColor(I2,cv2.COLOR_BGR2GRAY)
+    I1_color = cv2.cvtColor(I1,cv2.COLOR_BGR2RGB)
+    I2_color = cv2.cvtColor(I2,cv2.COLOR_BGR2RGB)
 
-
+    _, (ax1, ax2) = plt.subplots(1, 2)
+    ax1.imshow(I1_color)
+    ax2.imshow(I2_color)
+    plt.show()
+    sift = cv2.SIFT_create()
+    kp1, dsc1 = sift.detectAndCompute(I1_gray, None)
+    kp2, dsc2 = sift.detectAndCompute(I2_gray, None)
+    bf = cv2.BFMatcher()
+    matches = bf.knnMatch(dsc1, dsc2, k=2)
+    good = []
+    for m,n in matches:
+        if m.distance < 0.5*n.distance:
+            good.append([m])
+    print(good[0][0])
+    pts1 = []
+    pts2 = []
+    for corr in good:
+        corr = corr[0]
+        pts1.append(np.array([int(kp1[corr.queryIdx].pt[0]), 
+                int(kp1[corr.queryIdx].pt[1])]))
+        pts2.append(np.array([int(kp2[corr.trainIdx].pt[0]), 
+                int(kp2[corr.trainIdx].pt[1])]))
+    pts1 = np.array(pts1)
+    pts2 = np.array(pts2)
+    
+    display_matches(I1_color, pts1, I2_color, pts2)
+    
+    F, inliers = RANSAC(pts1, pts2)
+    
+    num_points_drawn = 20
+    pts1 = []
+    pts2 = []
+    i = 0
+    for i in range(num_points_drawn):
+        idx = random.randint(0, inliers.shape[0] - 1)
+        pt1, pt2 = inliers[idx]
+        pts1.append(pt1)        
+        pts2.append(pt2)
+        inliers = np.delete(inliers, idx, 0)
+    
+    display_epilines_and_points(I1_color, pts1, I2_color, pts2, F)
+    
+    
 #case1b()
 #case1d()
 
-case2b()
+#case2b()
 #case2c()
-#case2d()
+case2d()
 
 #case3a()
 #case3b()

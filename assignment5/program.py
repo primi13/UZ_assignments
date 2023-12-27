@@ -45,10 +45,9 @@ def case1b():
     # graph of disparities for pz ranging from 2.5 (=f) and 200 with a step of 0.1
     f = 2.5#mm
     T = 120#mm
-    disparities = []
+    numerator = f * T
     pzs = np.arange(2.5, 200, 0.1)
-    for pz in pzs:
-        disparities.append(f * T / pz)
+    disparities = numerator / pzs
     plt.plot(pzs, disparities)
     plt.title("Disparity in relation to pz:")
     plt.xlabel("pz [mm]")
@@ -103,122 +102,101 @@ def NCC2(X, Y, x_avg, x_var):
 
 
 def disparity_from_two_images(I1, I2, patch_border_size):
-    assert patch_border_size % 2 == 1, "Both sides of the patch must be odd."
     
-    b = int((patch_border_size - 1) / 2)
-    
-    r, c = I1.shape
+    if patch_border_size % 2 == 1:
+        b = int((patch_border_size - 1) / 2)
+    else:
+        b = int(patch_border_size / 2)
+        
+    r1, c1 = I1.shape
+    _, c2 = I2.shape
     
     disparities = np.zeros(I1.shape)
-        
-    kernel_avg = np.ones((1, patch_border_size)) / patch_border_size
-    kernel_sum = np.ones((1, patch_border_size))
-    
-    #_, axes = plt.subplots(1, 2)
-    #axes[0].imshow(I1, cmap="gray")
-    #axes[1].imshow(I2, cmap="gray")
-    #plt.show()
-    
-    avg1 = cv2.filter2D(cv2.filter2D(I1, -1, kernel_avg), -1, kernel_avg.T)
-    avg2 = cv2.filter2D(cv2.filter2D(I2, -1, kernel_avg), -1, kernel_avg.T)
-    print(I1[b:b+10, b:b+10])
-    print(avg1[b:b+10, b:b+10])
-        
-    #_, axes = plt.subplots(1, 2)
-    #axes[0].imshow(avg1, cmap="gray")
-    #axes[1].imshow(avg2, cmap="gray")
-    #plt.show()
-
-    diff1 = I1 - avg1
-    diff2 = I2 - avg2
-    
-    #_, axes = plt.subplots(1, 2)
-    #axes[0].imshow(diff1, cmap="gray")
-    #axes[1].imshow(diff2, cmap="gray")
-    #plt.show()
-   
-    square1 = diff1 * diff1
-    square2 = diff2 * diff2
-
-    #_, axes = plt.subplots(1, 2)
-    #axes[0].imshow(square1, cmap="gray")
-    #axes[1].imshow(square2, cmap="gray")
-    #plt.show()
-    
-    var1 = cv2.filter2D(cv2.filter2D(square1, -1, kernel_sum), -1, kernel_sum.T)
-    var2 = cv2.filter2D(cv2.filter2D(square2, -1, kernel_sum), -1, kernel_sum.T)
-
-    #_, axes = plt.subplots(1, 2)
-    #axes[0].imshow(var1, cmap="gray")
-    #axes[1].imshow(var2, cmap="gray")
-    #plt.show()
-
-    
-    window_half_size = 70
-    for y in range(b, r-b):
-        for x in range(b, c-b):
-            num = cv2.filter2D(diff2[y-b:y+b+1, max(x-window_half_size, 0):
-                                                min(x+window_half_size+1, c)], 
-                               -1, 
-                               diff1[y-b:y+b+1, x-b:x+b+1],
-                               borderType=cv2.BORDER_ISOLATED)
-            num = num[b]
-            denom = np.sqrt(var1[y, x] * var2[y, max(x-window_half_size, 0):
-                                                min(x+window_half_size+1, c)])
-            row = num / denom
-            max_x = np.argmax(row)
-            disparities[y, x] = abs(max_x - x)
-        print(y)
-    return disparities
-
-"""     for y1 in range(b, r1-b):
+            
+    window_half_size = 35
+    for y1 in range(b, r1-b):
         min_y = y1-b
         max_y = y1+b+1
         for x1 in range(b, c1-b):
             # we don't need y2, because we only search in the same line
-            # in the first image, so one degree of freedom goes bye-bye
-            reference_matrix = I1[min_y : max_y, 
+            # in the first image, so one degree of freedom goes away
+            patch1 = I1[min_y : max_y, 
                                   x1-b : x1+b+1]
-            ref_avg = np.average(reference_matrix)
-            ref_var = np.sum((reference_matrix - ref_avg)**2)
-
+            avg1value = np.average(patch1)
+            var1value = np.sum((patch1 - avg1value)**2)
 
             max_NCC = -np.inf
             max_x = None
-            for x2 in range(b, c2-b):
-                second_matrix = I2[min_y : max_y, 
+            start_window = max(0+b, x1 - window_half_size)
+            end_window = min(c2-b, x1 + window_half_size)
+            for x2 in range(start_window, end_window):
+                patch2 = I2[min_y : max_y, 
                                   x2-b : x2+b+1]
-                NCC_value = NCC(reference_matrix, second_matrix, ref_avg, ref_var)
+                NCC_value = NCC(patch1, patch2, avg1value, var1value)
                 if NCC_value != None and NCC_value > max_NCC:
                     max_NCC = NCC_value
                     max_x = x2
             if max_x == None:
                 disparities[y1, x1] = 0
             else:
-                disparities[y1, x1] = x1 - max_x          
-            print(y1, x1)
+                disparities[y1, x1] = abs(x1 - max_x)          
+        print(y1)
     return disparities
- """
+
+
 def case1d():
     dir = "data/disparity/"
-    image_pair_names = ["cporta", "office", "office2"]
+    #image_pair_names = ["cporta", "office", "office2"]
     image_pair_names_2 = ["office"]
     for name in image_pair_names_2:
         name = dir + name + "_"
         image_left = imread(name + "left.png")
         image_right = imread(name + "right.png")
+        hl, wl, *_ = image_left.shape        
+        hr, wr, *_ = image_right.shape
+        image_left_small = cv2.resize(image_left, (int(wl/2), int(hl/2)))
+        image_right_small = cv2.resize(image_right, (int(wr/2), int(hr/2)))
         disparities = disparity_from_two_images(
-            to_gray(image_left), 
-            to_gray(image_right),
-            patch_border_size=11)
+            to_gray(image_left_small), 
+            to_gray(image_right_small),
+            patch_border_size=10)
         _, axes = plt.subplots(1, 2)
-        axes[0].imshow(image_right)
+        axes[0].imshow(image_right_small)
         axes[0].set_title("Right image")
         axes[1].imshow(disparities, cmap="gray")
         axes[1].set_title("Disparities image")
         plt.show()
 
 
+def case1e():
+    dir = "data/disparity/"
+    #image_pair_names = ["cporta", "office", "office2"]
+    image_pair_names_2 = ["office"]
+    for name in image_pair_names_2:
+        name = dir + name + "_"
+        image_left = imread(name + "left.png")
+        image_right = imread(name + "right.png")
+        hl, wl, *_ = image_left.shape        
+        hr, wr, *_ = image_right.shape
+        image_left_small = cv2.resize(image_left, (int(wl/2), int(hl/2)))
+        image_right_small = cv2.resize(image_right, (int(wr/2), int(hr/2)))
+        disparities = disparity_from_two_images(
+            to_gray(image_left_small), 
+            to_gray(image_right_small),
+            patch_border_size=10)
+        disparities_uint8 = (disparities * 255).astype(np.uint8)
+        disparities_median_blurr = cv2.medianBlur(disparities_uint8, 11)
+        _, axes = plt.subplots(1, 3)
+        axes[0].imshow(image_right_small)
+        axes[0].set_title("Right image")
+        axes[0].imshow(disparities_uint8)
+        axes[1].set_title("Disparities image")
+        axes[2].imshow(disparities_median_blurr, cmap="gray")
+        axes[2].set_title("Disparities median blurred image")
+        plt.show()
+
+
+    
 # 2
 
 # 2b
@@ -479,7 +457,7 @@ def case2d():
     for m,n in matches:
         if m.distance < 0.5*n.distance:
             good.append([m])
-    print(good[0][0])
+            
     pts1 = []
     pts2 = []
     for corr in good:
@@ -587,12 +565,12 @@ def case3a():
     # Show the interactive plot
     plt.show()
 
-#case1b()
-case1d()
+case1b()
+#case1d()
+#case1e()
 
 #case2b()
 #case2c()
 #case2d()
 
 #case3a()
-#case3b()

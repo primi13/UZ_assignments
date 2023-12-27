@@ -113,58 +113,61 @@ def disparity_from_two_images(I1, I2, patch_border_size):
         
     kernel_avg = np.ones((1, patch_border_size)) / patch_border_size
     kernel_sum = np.ones((1, patch_border_size))
-        
+    
+    #_, axes = plt.subplots(1, 2)
+    #axes[0].imshow(I1, cmap="gray")
+    #axes[1].imshow(I2, cmap="gray")
+    #plt.show()
+    
     avg1 = cv2.filter2D(cv2.filter2D(I1, -1, kernel_avg), -1, kernel_avg.T)
     avg2 = cv2.filter2D(cv2.filter2D(I2, -1, kernel_avg), -1, kernel_avg.T)
     print(I1[b:b+10, b:b+10])
     print(avg1[b:b+10, b:b+10])
-    
-    
-    _, axes = plt.subplots(1, 2)
-    axes[0].imshow(I1, cmap="gray")
-    axes[1].imshow(I2, cmap="gray")
-    plt.show()
-    _, axes = plt.subplots(1, 2)
-    axes[0].imshow(avg1, cmap="gray")
-    axes[1].imshow(avg2, cmap="gray")
-    plt.show()
+        
+    #_, axes = plt.subplots(1, 2)
+    #axes[0].imshow(avg1, cmap="gray")
+    #axes[1].imshow(avg2, cmap="gray")
+    #plt.show()
 
     diff1 = I1 - avg1
     diff2 = I2 - avg2
     
-    _, axes = plt.subplots(1, 2)
-    axes[0].imshow(diff1, cmap="gray")
-    axes[1].imshow(diff2, cmap="gray")
-    plt.show()
+    #_, axes = plt.subplots(1, 2)
+    #axes[0].imshow(diff1, cmap="gray")
+    #axes[1].imshow(diff2, cmap="gray")
+    #plt.show()
    
     square1 = diff1 * diff1
     square2 = diff2 * diff2
 
-    _, axes = plt.subplots(1, 2)
-    axes[0].imshow(square1, cmap="gray")
-    axes[1].imshow(square2, cmap="gray")
-    plt.show()
+    #_, axes = plt.subplots(1, 2)
+    #axes[0].imshow(square1, cmap="gray")
+    #axes[1].imshow(square2, cmap="gray")
+    #plt.show()
     
     var1 = cv2.filter2D(cv2.filter2D(square1, -1, kernel_sum), -1, kernel_sum.T)
     var2 = cv2.filter2D(cv2.filter2D(square2, -1, kernel_sum), -1, kernel_sum.T)
 
-    _, axes = plt.subplots(1, 2)
-    axes[0].imshow(var1, cmap="gray")
-    axes[1].imshow(var2, cmap="gray")
-    plt.show()
+    #_, axes = plt.subplots(1, 2)
+    #axes[0].imshow(var1, cmap="gray")
+    #axes[1].imshow(var2, cmap="gray")
+    #plt.show()
 
     
+    window_half_size = 70
     for y in range(b, r-b):
-        belt = diff2[y-b : y+b+1]
         for x in range(b, c-b):
-            num = cv2.filter2D(belt, -1, 
+            num = cv2.filter2D(diff2[y-b:y+b+1, max(x-window_half_size, 0):
+                                                min(x+window_half_size+1, c)], 
+                               -1, 
                                diff1[y-b:y+b+1, x-b:x+b+1],
                                borderType=cv2.BORDER_ISOLATED)
-            num = num[b, b:c-b]
-            denom = np.sqrt(var1[y, x] * var2[y, b:c-b])
+            num = num[b]
+            denom = np.sqrt(var1[y, x] * var2[y, max(x-window_half_size, 0):
+                                                min(x+window_half_size+1, c)])
             row = num / denom
             max_x = np.argmax(row)
-            disparities[y, x] = x - max_x
+            disparities[y, x] = abs(max_x - x)
         print(y)
     return disparities
 
@@ -199,17 +202,18 @@ def disparity_from_two_images(I1, I2, patch_border_size):
 def case1d():
     dir = "data/disparity/"
     image_pair_names = ["cporta", "office", "office2"]
-    for name in image_pair_names:
+    image_pair_names_2 = ["office"]
+    for name in image_pair_names_2:
         name = dir + name + "_"
         image_left = imread(name + "left.png")
         image_right = imread(name + "right.png")
         disparities = disparity_from_two_images(
             to_gray(image_left), 
             to_gray(image_right),
-            patch_border_size=21)
+            patch_border_size=11)
         _, axes = plt.subplots(1, 2)
-        axes[0].imshow(image_left)
-        axes[0].set_title("Left image")
+        axes[0].imshow(image_right)
+        axes[0].set_title("Right image")
         axes[1].imshow(disparities, cmap="gray")
         axes[1].set_title("Disparities image")
         plt.show()
@@ -494,8 +498,7 @@ def case2d():
     num_points_drawn = 20
     pts1 = []
     pts2 = []
-    i = 0
-    for i in range(num_points_drawn):
+    for _ in range(num_points_drawn):
         idx = random.randint(0, inliers.shape[0] - 1)
         pt1, pt2 = inliers[idx]
         pts1.append(pt1)        
@@ -504,13 +507,92 @@ def case2d():
     
     display_epilines_and_points(I1_color, pts1, I2_color, pts2, F)
     
+
+# 3
+
+# 3a
+def vector_product_matrix_form(pt):
+    x = pt[0]
+    y = pt[1]
+    return np.array([np.array([0, -1, y]),
+                     np.array([1, 0, -x]),
+                     np.array([-y, x, 0])])
+
+def triangulate(P1, pts1, P2, pts2):
+    pts_3D = []
+    for pt1, pt2 in zip(pts1, pts2):
+        pt1_matrix = vector_product_matrix_form(pt1)
+        pt2_matrix = vector_product_matrix_form(pt2)
+        pt1P1 = np.matmul(pt1_matrix, P1)
+        pt2P2 = np.matmul(pt2_matrix, P2)
+        A = np.vstack((pt1P1[:2], pt2P2[:2]))
+        _, _, VT = np.linalg.svd(A)
+        pt_3D = VT[-1] / VT[-1, -1]
+        pts_3D.append(pt_3D[:-1])
+    return np.array(pts_3D)
+
+def case3a():
+    dir = "data/epipolar/"
+    P1 = np.loadtxt(dir + "house1_camera.txt")
+    P2 = np.loadtxt(dir + "house2_camera.txt")
     
+    pts_matrix = np.loadtxt(dir + "house_points.txt")
+    pts1, pts2 = file_to_pts(pts_matrix)
+    pts_3D = triangulate(P1, pts1, P2, pts2)
+    easier_to_interpret_pts_3D = []
+    T = np.array([np.array([-1, 0, 0]), 
+                  np.array([0, 0, -1]),
+                  np.array([0, 1, 0])])
+    
+    for pt_3D in pts_3D:
+        easier_to_interpret_pts_3D.append(np.dot(T, pt_3D))
+    easier_to_interpret_pts_3D = np.array(
+        easier_to_interpret_pts_3D
+    )    
+    print(easier_to_interpret_pts_3D)
+    
+    # Create a figure and a 3D axis
+    fig = plt.figure()
+    ax1 = fig.add_subplot(131)
+    ax2 = fig.add_subplot(132)
+    
+    house1 = imread(dir + "house1.jpg")
+    house2 = imread(dir + "house2.jpg")
+    
+    pts1x, pts1y = pts_to_coord(pts1)
+    pts2x, pts2y = pts_to_coord(pts2)
+
+    ax1.imshow(house1)
+    ax1.scatter(pts1x, pts1y, color="r", s=10)
+    ax2.imshow(house2)
+    ax2.scatter(pts2x, pts2y, color="r", s=10)
+
+    ax3 = fig.add_subplot(133, projection='3d')
+
+    # Scatter plot the points
+    scatter = ax3.scatter(easier_to_interpret_pts_3D[:, 0],
+                         easier_to_interpret_pts_3D[:, 1],
+                         easier_to_interpret_pts_3D[:, 2])
+
+    # Annotate each point with its index
+    for i, (xi, yi, zi) in enumerate(easier_to_interpret_pts_3D):
+        ax3.text(xi, yi, zi, str(i), color='red')
+
+    # Set labels and title
+    ax3.set_xlabel('X')
+    ax3.set_ylabel('Y')
+    ax3.set_zlabel('Z')
+    ax3.set_title('3D Scatter Plot with Annotations')
+
+    # Show the interactive plot
+    plt.show()
+
 #case1b()
-#case1d()
+case1d()
 
 #case2b()
 #case2c()
-case2d()
+#case2d()
 
 #case3a()
 #case3b()

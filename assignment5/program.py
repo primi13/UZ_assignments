@@ -185,11 +185,11 @@ def case1e():
             to_gray(image_right_small),
             patch_border_size=10)
         disparities_uint8 = (disparities * 255).astype(np.uint8)
-        disparities_median_blurr = cv2.medianBlur(disparities_uint8, 11)
+        disparities_median_blurr = cv2.medianBlur(disparities_uint8, 21)
         _, axes = plt.subplots(1, 3)
         axes[0].imshow(image_right_small)
         axes[0].set_title("Right image")
-        axes[0].imshow(disparities_uint8)
+        axes[1].imshow(disparities, cmap="gray")
         axes[1].set_title("Disparities image")
         axes[2].imshow(disparities_median_blurr, cmap="gray")
         axes[2].set_title("Disparities median blurred image")
@@ -565,12 +565,12 @@ def case3a():
     # Show the interactive plot
     plt.show()
 
-case1b()
+#case1b()
 #case1d()
 #case1e()
 
 #case2b()
 #case2c()
-#case2d()
+case2d()
 
 #case3a()

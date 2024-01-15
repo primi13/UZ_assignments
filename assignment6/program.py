@@ -132,7 +132,7 @@ def closest_pt_print(points, q, print_str, before):
 
 def visualize_reconstruction(points_before, center, C,
                              points_after, q_before=None, q_after=None, 
-                             is_q=False, is_elipse=True):
+                             is_q=False, is_elipse=True, is_line=False):
     bottom = np.min(points_before)
     upper = np.max(points_before)
     #plt.xlim(bottom - 1, upper + 1)
@@ -177,7 +177,8 @@ def visualize_reconstruction(points_before, center, C,
     # so that it is more easily seen that they are all colinear
     first_point = np.min(points_after, axis=0)
     last_point = np.max(points_after, axis=0)
-    plt.plot([first_point[0], last_point[0]], [first_point[1], last_point[1]], 
+    if is_line:
+        plt.plot([first_point[0], last_point[0]], [first_point[1], last_point[1]], 
              color="purple")
     
     plt.show()
@@ -205,7 +206,8 @@ def case1f():
     visualize(points_subspace_back, U_tilde.T, mu, C, S)
     
     visualize_reconstruction(points, mu, C, points_subspace_back, 
-                             q_before=q, q_after=q_subspace_back, is_q=True)
+                             q_before=q, q_after=q_subspace_back, 
+                             is_q=True, is_line=True)
 
 
 # 2
@@ -227,9 +229,7 @@ def dual_PCA(points, change=False, idx1=None, idx2=None):
     #print(S)
     print("U\'.shape:", U.shape)
     print("S\'.shape:", S.shape)
-    for i in range(S.shape[0]):
-        if S[i] == 0:
-            S[i] = 1e-15
+    S = S + ((S == 0) * 1e-15) # to get rid of zeroes in S (change them to)
     S_inv = np.linalg.inv(np.diag(S))
     rhs = np.sqrt(1 / (N - 1) * S_inv)
     #print()
@@ -241,22 +241,25 @@ def dual_PCA(points, change=False, idx1=None, idx2=None):
     #print()
     #print(U)
     print("U.shape:", U.shape)
-    
-    points_subspace = np.asarray([np.dot(U.T, point - mu) for point in points])
+    return U, mu, covariance_matrix, S
+
+def transform_space(U, mu, vectors, change=False, idx1=None, idx2=None):
+    vectors_subspace = np.asarray([np.dot(U.T, np.reshape(vector, (-1, )) - mu) for vector in vectors])
     print()
-    print("points_subspace.shape:", points_subspace.shape)
-        
+    print("points_subspace.shape:", vectors_subspace.shape)
     if change:
-        print(points_subspace.shape)
-        points_subspace[idx1][idx2] = 0
-    points_subspace_back = np.asarray([np.dot(U, point) + mu for point in points_subspace])
-    print("points_subspace_back.shape:", points_subspace_back.shape)
-    return U.T, mu, covariance_matrix, S, points_subspace_back
+        vectors_subspace[idx1][idx2] = 0
+    vectors_subspace_back = np.asarray([np.dot(U, np.reshape(vector, (-1, ))) + mu for vector in vectors_subspace])
+    print()
+    print("points_subspace_back.shape:", vectors_subspace_back.shape)
+    return vectors_subspace_back
+
 
 def case2a():
     points = np.loadtxt("data/points.txt")
     print(points)
-    _, mu, C, _, points_after = dual_PCA(points)
+    U, mu, C, _ = dual_PCA(points)
+    points_after = transform_space(U, mu, points)
     print(points_after)
     visualize_reconstruction(points, mu, C, points_after, is_elipse=False)
 
@@ -271,20 +274,23 @@ def case2b():
     print()
     print(points_right)
     
-    _, mu, C, _, points_left_after = dual_PCA(points_left)
+    U, mu, C, _ = dual_PCA(points_left)
+    points_left_after = transform_space(U, mu, points_left)
     print(points_left_after)
     visualize_reconstruction(points_left, mu, C, points_left_after, is_elipse=False)
 
-    _, mu, C, _, points_right_after = dual_PCA(points_right)
+    U, mu, C, _ = dual_PCA(points_right)
+    points_right_after = transform_space(U, mu, points_right)
     print(points_right_after)
-    visualize_reconstruction(points_left, mu, C, points_right_after, is_elipse=False)
+    visualize_reconstruction(points_right, mu, C, points_right_after, is_elipse=False)
     
     
 # 3
 
 # 3a
-def case3a():
-    folder_path = "data/faces/1"
+def case3a(folder_path=None):
+    if folder_path == None:
+        folder_path = "data/faces/1"
     file_list = os.listdir(folder_path)
     image_files = [file for file in file_list if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))]
 
@@ -308,12 +314,9 @@ def case3a():
 
 def case3b():
     images, shapes = case3a()
-    UT, mu, C, S, images_after = dual_PCA(images.T)
-    images_after = images_after.T
-    print(images_after)
-    print(images_after.shape)
+    U, mu, C, S = dual_PCA(images.T)
     for i in range(5):
-        image = np.reshape(UT[i], shapes)
+        image = np.reshape(U.T[i], shapes)
         plt.subplot(151 + i)
         plt.imshow(image, cmap="gray")
     plt.show()
@@ -330,7 +333,7 @@ def case3b():
     images123 = np.vstack((image1, image2, image3))
     print(images123)
     print(images123.shape)
-    *_, images123_after = dual_PCA(images123, change=True, idx1=2, idx2=1)
+    images123_after = transform_space(U, mu, images123, change=True, idx1=2, idx2=4)
 
     for i in range(len(images123_after)):
         image = images123_after[i]
@@ -350,18 +353,52 @@ def case3b():
     print("Diff in pixels in the first and third image:", np.sum(1 - (image1_after == image3_after)))
 
 
-#def case3c():
+def case3c():
+    images, shapes = case3a("data/faces/1")
+    U, mu, C, S = dual_PCA(images.T)
+    for i in range(5):
+        image = np.reshape(U.T[i], shapes)
+        plt.subplot(151 + i)
+        plt.imshow(image, cmap="gray")
+    plt.show()
 
-#case1a()
-#case1b()
-#case1c()
-#case1d()
-#case1e()
-#case1f()
+    
+    
+    image = cv2.imread("data/faces/1/001.png")
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    image = np.reshape(image, (-1, 1))
+    print(image)
+    
+    retain_arr = [32, 16, 8, 4, 2, 1]
+    for i, retain in enumerate(retain_arr):
+        image_to_use = np.copy(image)
+        images = np.array([image_to_use])
+        print("images.shape:", images.shape)
+        print("mu.shape:", mu.shape)
+        U[:, retain:] = 0
+        images_after = transform_space(U, mu, images)
+        print("images_after.shape:", images_after.shape)
+        print(images_after)
+        print("images_after[0].shape:", images_after[0].shape)
+        print(images_after[0])
+        
+        image_after = images_after[0]
+        image_after = np.reshape(images_after, shapes)
+        plt.subplot(161+i)
+        plt.imshow(image_after, cmap="gray")
+    plt.show()
 
-#case2a()
-#case2b()
 
-#case3a()
+case1a()
+case1b()
+case1c()
+case1d()
+case1e()
+case1f()
+
+case2a()
+case2b()
+
+case3a()
 case3b()
-#case3c()
+case3c()
